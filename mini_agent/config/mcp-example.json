@@ -14,7 +14,7 @@
         "SERPER_API_KEY": "",
         "MINIMAX_API_KEY": ""
       },
-      "disabled": true
+      "disabled": false
     },
     "memory": {
       "description": "Memory - Knowledge graph memory system (long-term memory based on graph database)",
@@ -23,7 +23,15 @@
         "-y",
         "@modelcontextprotocol/server-memory"
       ],
-      "disabled": true
+      "disabled": false
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": ""
+      },
+      "disabled": false
     }
   }
 }

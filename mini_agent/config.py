@@ -53,6 +53,9 @@ class ToolsConfig(BaseModel):
     enable_mcp: bool = True
     mcp_config_path: str = "mcp.json"
 
+    # Browser automation
+    enable_browser_use: bool = True
+
 
 class Config(BaseModel):
     """Main configuration class"""
@@ -138,6 +141,7 @@ class Config(BaseModel):
             skills_dir=tools_data.get("skills_dir", "./skills"),
             enable_mcp=tools_data.get("enable_mcp", True),
             mcp_config_path=tools_data.get("mcp_config_path", "mcp.json"),
+            enable_browser_use=tools_data.get("enable_browser_use", True),
         )
 
         return cls(

@@ -19,7 +19,7 @@
 api_key: "YOUR_API_KEY_HERE"  # Replace with your MiniMax API Key
 api_base: "https://api.minimax.io"   # Global users (default)
 # api_base: "https://api.minimaxi.com"  # China users
-model: "MiniMax-M2"
+model: "MiniMax-M2.1"
 # LLM provider: "anthropic" or "openai"
 # The LLMClient will automatically append /anthropic or /v1 to api_base based on provider
 provider: "anthropic"  # Default: anthropic
@@ -52,3 +52,30 @@ tools:
   enable_mcp: true         # Enable MCP tools
   mcp_config_path: "mcp.json"  # MCP configuration file (same config directory)
                            # Note: API Keys for MCP tools are configured in mcp.json
+
+  # Browser Automation
+  enable_browser_use: true # Enable browser automation tools (Playwright based)
+                           # Browser tools: browser_goto, browser_screenshot, browser_get_content,
+                           # browser_click, browser_type, browser_close
+                           # Note: Requires playwright and chromium installation
+
+  # Browser Connection Settings
+  browser_options:
+    # Use existing browser (connect to already running browser via CDP)
+    use_existing_browser: true  # Set to true to connect to existing browser
+                                 # This allows reusing cookies, sessions, logged-in state
+                                 # Default: false (launch new browser instance)
+
+    # CDP (Chrome DevTools Protocol) endpoint URL
+    # Used when use_existing_browser is true
+    cdp_url: "http://localhost:9222"  # Default CDP endpoint
+                                      # Browser must be launched with --remote-debugging-port=9222
+
+    # Instructions for using existing browser:
+    # 1. Close all Chrome/Chromium/Edge windows
+    # 2. Launch browser with remote debugging:
+    #    - macOS: /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+    #    - Linux: google-chrome --remote-debugging-port=9222
+    #    - Windows: "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
+    # 3. Navigate to sites and log in (cookies/session will be preserved)
+    # 4. Run Mini Agent with use_existing_browser: true

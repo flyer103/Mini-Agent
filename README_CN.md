@@ -313,6 +313,7 @@ python -m mini_agent.cli
 
 - [开发指南](docs/DEVELOPMENT_GUIDE_CN.md) - 详细的开发和配置指引
 - [生产环境指南](docs/PRODUCTION_DEPLOYMENT_GUIDE_CN.md) - 生产部署最佳实践
+- [浏览器认证指南](docs/browser_authentication.md) - 使用现有浏览器会话进行认证自动化
 
 ## 贡献
 

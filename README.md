@@ -312,6 +312,7 @@ python -m mini_agent.cli
 
 - [Development Guide](docs/DEVELOPMENT_GUIDE.md) - Detailed development and configuration guidance
 - [Production Guide](docs/PRODUCTION_GUIDE.md) - Best practices for production deployment
+- [Browser Authentication Guide](docs/browser_authentication.md) - Using existing browser sessions for authenticated automation
 
 ## Contributing
 
