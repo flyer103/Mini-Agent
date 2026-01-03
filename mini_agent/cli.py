@@ -598,6 +598,9 @@ async def run_agent(workspace_dir: Path):
         print(f"{Colors.BRIGHT_CYAN}Cleaning up MCP connections...{Colors.RESET}")
         await cleanup_mcp_connections()
         print(f"{Colors.GREEN}✅ Cleanup complete{Colors.RESET}\n")
+    except asyncio.CancelledError:
+        # Task was cancelled (e.g., Ctrl+C, timeout), cleanup what we can
+        print(f"{Colors.YELLOW}⚠️  Interrupted during cleanup{Colors.RESET}\n")
     except Exception as e:
         print(f"{Colors.YELLOW}Error during cleanup (can be ignored): {e}{Colors.RESET}\n")
 
@@ -618,7 +621,14 @@ def main():
     workspace_dir.mkdir(parents=True, exist_ok=True)
 
     # Run the agent (config always loaded from package directory)
-    asyncio.run(run_agent(workspace_dir))
+    try:
+        asyncio.run(run_agent(workspace_dir))
+    except KeyboardInterrupt:
+        # Ctrl+C or SIGINT was sent - normal exit
+        print(f"\n{Colors.BRIGHT_CYAN}Shutdown complete.{Colors.RESET}")
+    except asyncio.CancelledError:
+        # Task was cancelled - treat as normal shutdown, not an error
+        print(f"\n{Colors.BRIGHT_CYAN}Shutdown complete.{Colors.RESET}")
 
 
 if __name__ == "__main__":

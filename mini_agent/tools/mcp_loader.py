@@ -142,9 +142,16 @@ class MCPServerConnection:
         """Properly disconnect from the MCP server."""
         if self.exit_stack:
             # AsyncExitStack handles all cleanup properly
-            await self.exit_stack.aclose()
-            self.exit_stack = None
-            self.session = None
+            try:
+                await self.exit_stack.aclose()
+            except Exception as e:
+                # Ignore errors during cleanup, especially CancellationErrors
+                # that occur when the program is shutting down
+                pass
+            finally:
+                # Ensure we always clear the references
+                self.exit_stack = None
+                self.session = None
 
 
 # Global connections registry
@@ -224,5 +231,9 @@ async def cleanup_mcp_connections():
     """Clean up all MCP connections."""
     global _mcp_connections
     for connection in _mcp_connections:
-        await connection.disconnect()
+        try:
+            await connection.disconnect()
+        except Exception:
+            # Ignore errors during cleanup to ensure all connections are attempted
+            pass
     _mcp_connections.clear()
