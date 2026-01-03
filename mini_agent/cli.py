@@ -124,7 +124,7 @@ def print_help():
     print(help_text)
 
 
-def print_session_info(agent: Agent, workspace_dir: Path, model: str):
+def print_session_info(agent: Agent, workspace_dir: Path, model: str, config_path: Path):
     """Print session information with proper alignment"""
     BOX_WIDTH = 58
 
@@ -150,6 +150,7 @@ def print_session_info(agent: Agent, workspace_dir: Path, model: str):
     print(f"{Colors.DIM}├{'─' * BOX_WIDTH}┤{Colors.RESET}")
 
     # Info lines
+    print_info_line(f"Config: {config_path}")
     print_info_line(f"Model: {model}")
     print_info_line(f"Workspace: {workspace_dir}")
     print_info_line(f"Message History: {len(agent.messages)} messages")
@@ -469,7 +470,7 @@ async def run_agent(workspace_dir: Path):
 
     # 8. Display welcome information
     print_banner()
-    print_session_info(agent, workspace_dir, config.llm.model)
+    print_session_info(agent, workspace_dir, config.llm.model, config_path)
 
     # 9. Setup prompt_toolkit session
     # Command completer
