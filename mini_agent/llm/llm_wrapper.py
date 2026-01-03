@@ -34,6 +34,7 @@ class LLMClient:
         api_base: str = "https://api.minimaxi.com",
         model: str = "MiniMax-M2",
         retry_config: RetryConfig | None = None,
+        request_timeout: float = 60.0,
     ):
         """Initialize LLM client with specified provider.
 
@@ -44,11 +45,13 @@ class LLMClient:
                      Will be automatically suffixed with /anthropic or /v1 based on provider
             model: Model name to use
             retry_config: Optional retry configuration
+            request_timeout: Timeout for API requests in seconds
         """
         self.provider = provider
         self.api_key = api_key
         self.model = model
         self.retry_config = retry_config or RetryConfig()
+        self.request_timeout = request_timeout
 
         # for backward compatibility
         api_base = api_base.replace("/anthropic", "")
@@ -71,6 +74,7 @@ class LLMClient:
                 api_base=full_api_base,
                 model=model,
                 retry_config=retry_config,
+                request_timeout=request_timeout,
             )
         elif provider == LLMProvider.OPENAI:
             self._client = OpenAIClient(
@@ -78,6 +82,7 @@ class LLMClient:
                 api_base=full_api_base,
                 model=model,
                 retry_config=retry_config,
+                request_timeout=request_timeout,
             )
         else:
             raise ValueError(f"Unsupported provider: {provider}")

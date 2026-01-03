@@ -37,6 +37,13 @@ max_steps: 100  # Maximum execution steps
 workspace_dir: "./workspace"  # Working directory
 system_prompt_path: "system_prompt.md"  # System prompt file (same config directory)
 
+# ===== Timeout Configuration =====
+timeout:
+  llm_request: 60.0         # LLM API call timeout (seconds)
+  tool_execution: 30.0      # Tool execution timeout (seconds)
+  agent_step: 600.0         # Total agent step timeout (seconds) - 10 minutes
+  enable_progress: true     # Enable progress indication and status updates
+
 # ===== Tools Configuration =====
 tools:
   # Basic tool switches

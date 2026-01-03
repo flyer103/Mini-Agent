@@ -1,12 +1,16 @@
 """Core Agent implementation."""
 
+import asyncio
 import json
+import time
 from pathlib import Path
 
 import tiktoken
 
+from .exceptions import ToolTimeoutError
 from .llm import LLMClient
 from .logger import AgentLogger
+from .progress import ProgressIndicator
 from .schema import Message
 from .tools.base import Tool, ToolResult
 from .utils import calculate_display_width
@@ -286,6 +290,14 @@ Requirements:
 
         step = 0
 
+        # Get timeout configuration (defaults if config not available)
+        tool_timeout = getattr(self.llm, 'request_timeout', 30.0)
+        enable_progress = True
+        if hasattr(self.llm, 'request_timeout'):
+            # If request_timeout is > 0, use tool timeout and enable progress
+            tool_timeout = max(5.0, self.llm.request_timeout * 0.5)  # Tool timeout defaults to half of LLM timeout
+            enable_progress = tool_timeout > 0
+
         while step < self.max_steps:
             # Check and summarize message history to prevent context overflow
             await self._summarize_messages()
@@ -378,7 +390,7 @@ Requirements:
                 for line in args_json.split("\n"):
                     print(f"   {Colors.DIM}{line}{Colors.RESET}")
 
-                # Execute tool
+                # Execute tool with timeout and progress indication
                 if function_name not in self.tools:
                     result = ToolResult(
                         success=False,
@@ -386,9 +398,25 @@ Requirements:
                         error=f"Unknown tool: {function_name}",
                     )
                 else:
+                    progress = ProgressIndicator(
+                        f"Executing {function_name}", enable_progress
+                    )
                     try:
                         tool = self.tools[function_name]
-                        result = await tool.execute(**arguments)
+                        async with asyncio.timeout(tool_timeout):
+                            progress.start()
+                            try:
+                                result = await tool.execute(**arguments)
+                            finally:
+                                progress.stop()
+                    except asyncio.TimeoutError:
+                        error_msg = f"Tool '{function_name}' timed out after {tool_timeout}s. Consider increasing timeout or breaking task into smaller steps."
+                        print(f"\n{Colors.BRIGHT_RED}⚠️  Timeout:{Colors.RESET} {error_msg}")
+                        result = ToolResult(
+                            success=False,
+                            content="",
+                            error=error_msg,
+                        )
                     except Exception as e:
                         # Catch all exceptions during tool execution, convert to failed ToolResult
                         import traceback

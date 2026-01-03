@@ -1,11 +1,14 @@
 """OpenAI LLM client implementation."""
 
+import asyncio
 import json
 import logging
 from typing import Any
 
 from openai import AsyncOpenAI
 
+from ..exceptions import LLMTimeoutError
+from ..progress import ProgressIndicator
 from ..retry import RetryConfig, async_retry
 from ..schema import FunctionCall, LLMResponse, Message, TokenUsage, ToolCall
 from .base import LLMClientBase
@@ -28,6 +31,7 @@ class OpenAIClient(LLMClientBase):
         api_base: str = "https://api.minimaxi.com/v1",
         model: str = "MiniMax-M2",
         retry_config: RetryConfig | None = None,
+        request_timeout: float = 60.0,
     ):
         """Initialize OpenAI client.
 
@@ -36,8 +40,9 @@ class OpenAIClient(LLMClientBase):
             api_base: Base URL for the API (default: MiniMax OpenAI endpoint)
             model: Model name to use (default: MiniMax-M2)
             retry_config: Optional retry configuration
+            request_timeout: Timeout for API requests in seconds
         """
-        super().__init__(api_key, api_base, model, retry_config)
+        super().__init__(api_key, api_base, model, retry_config, request_timeout)
 
         # Initialize OpenAI client
         self.client = AsyncOpenAI(
@@ -72,10 +77,27 @@ class OpenAIClient(LLMClientBase):
         if tools:
             params["tools"] = self._convert_tools(tools)
 
-        # Use OpenAI SDK's chat.completions.create
-        response = await self.client.chat.completions.create(**params)
-        # Return full response to access usage info
-        return response
+        # Use OpenAI SDK's chat.completions.create with timeout
+        try:
+            # Show progress indicator if progress is enabled (timeout > 0)
+            if hasattr(self, 'request_timeout') and self.request_timeout > 0:
+                progress = ProgressIndicator("Waiting for LLM response", True)
+                progress.start()
+                try:
+                    response = await asyncio.wait_for(
+                        self.client.chat.completions.create(**params),
+                        timeout=self.request_timeout
+                    )
+                finally:
+                    progress.stop()
+            else:
+                # No timeout or progress indication
+                response = await self.client.chat.completions.create(**params)
+
+            # Return full response to access usage info
+            return response
+        except asyncio.TimeoutError:
+            raise LLMTimeoutError(self.request_timeout)
 
     def _convert_tools(self, tools: list[Any]) -> list[dict[str, Any]]:
         """Convert tools to OpenAI format.

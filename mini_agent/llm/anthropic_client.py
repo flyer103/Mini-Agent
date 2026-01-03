@@ -1,10 +1,13 @@
 """Anthropic LLM client implementation."""
 
+import asyncio
 import logging
 from typing import Any
 
 import anthropic
 
+from ..exceptions import LLMTimeoutError
+from ..progress import ProgressIndicator
 from ..retry import RetryConfig, async_retry
 from ..schema import FunctionCall, LLMResponse, Message, TokenUsage, ToolCall
 from .base import LLMClientBase
@@ -27,6 +30,7 @@ class AnthropicClient(LLMClientBase):
         api_base: str = "https://api.minimaxi.com/anthropic",
         model: str = "MiniMax-M2",
         retry_config: RetryConfig | None = None,
+        request_timeout: float = 60.0,
     ):
         """Initialize Anthropic client.
 
@@ -35,8 +39,9 @@ class AnthropicClient(LLMClientBase):
             api_base: Base URL for the API (default: MiniMax Anthropic endpoint)
             model: Model name to use (default: MiniMax-M2)
             retry_config: Optional retry configuration
+            request_timeout: Timeout for API requests in seconds
         """
-        super().__init__(api_key, api_base, model, retry_config)
+        super().__init__(api_key, api_base, model, retry_config, request_timeout)
 
         # Initialize Anthropic async client
         self.client = anthropic.AsyncAnthropic(
@@ -76,9 +81,26 @@ class AnthropicClient(LLMClientBase):
         if tools:
             params["tools"] = self._convert_tools(tools)
 
-        # Use Anthropic SDK's async messages.create
-        response = await self.client.messages.create(**params)
-        return response
+        # Use Anthropic SDK's async messages.create with timeout
+        try:
+            # Show progress indicator if progress is enabled (timeout > 0)
+            if hasattr(self, 'request_timeout') and self.request_timeout > 0:
+                progress = ProgressIndicator("Waiting for LLM response", True)
+                progress.start()
+                try:
+                    response = await asyncio.wait_for(
+                        self.client.messages.create(**params),
+                        timeout=self.request_timeout
+                    )
+                finally:
+                    progress.stop()
+            else:
+                # No timeout or progress indication
+                response = await self.client.messages.create(**params)
+
+            return response
+        except asyncio.TimeoutError:
+            raise LLMTimeoutError(self.request_timeout)
 
     def _convert_tools(self, tools: list[Any]) -> list[dict[str, Any]]:
         """Convert tools to Anthropic format.

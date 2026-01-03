@@ -9,6 +9,15 @@ import yaml
 from pydantic import BaseModel, Field
 
 
+class TimeoutConfig(BaseModel):
+    """Timeout configuration for operations"""
+
+    llm_request: float = 60.0      # LLM API call timeout (seconds)
+    tool_execution: float = 30.0   # Individual tool execution timeout (seconds)
+    agent_step: float = 600.0      # Total agent step timeout (seconds) - 10 minutes
+    enable_progress: bool = True   # Enable progress indication
+
+
 class RetryConfig(BaseModel):
     """Retry configuration"""
 
@@ -27,6 +36,7 @@ class LLMConfig(BaseModel):
     model: str = "MiniMax-M2"
     provider: str = "anthropic"  # "anthropic" or "openai"
     retry: RetryConfig = Field(default_factory=RetryConfig)
+    timeout: TimeoutConfig = Field(default_factory=TimeoutConfig)
 
 
 class AgentConfig(BaseModel):
@@ -116,12 +126,22 @@ class Config(BaseModel):
             exponential_base=retry_data.get("exponential_base", 2.0),
         )
 
+        # Parse timeout configuration
+        timeout_data = data.get("timeout", {})
+        timeout_config = TimeoutConfig(
+            llm_request=timeout_data.get("llm_request", 60.0),
+            tool_execution=timeout_data.get("tool_execution", 30.0),
+            agent_step=timeout_data.get("agent_step", 600.0),
+            enable_progress=timeout_data.get("enable_progress", True),
+        )
+
         llm_config = LLMConfig(
             api_key=data["api_key"],
             api_base=data.get("api_base", "https://api.minimax.io"),
             model=data.get("model", "MiniMax-M2"),
             provider=data.get("provider", "anthropic"),
             retry=retry_config,
+            timeout=timeout_config,
         )
 
         # Parse Agent configuration

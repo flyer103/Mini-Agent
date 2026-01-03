@@ -14,7 +14,7 @@
         "SERPER_API_KEY": "",
         "MINIMAX_API_KEY": ""
       },
-      "disabled": false
+      "disabled": true
     },
     "memory": {
       "description": "Memory - Knowledge graph memory system (long-term memory based on graph database)",
