@@ -258,7 +258,7 @@ Examples:
             page = await manager.get_page()
 
             # Navigate to URL
-            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.goto(url, wait_until="load", timeout=30000)
 
             # Get page info
             title = await page.title()
