@@ -177,7 +177,19 @@ async def run_acp_server(config: Config | None = None) -> None:
         if meta:
             system_prompt = f"{system_prompt.rstrip()}\n\n{meta}"
     rcfg = config.llm.retry
-    llm = LLMClient(api_key=config.llm.api_key, api_base=config.llm.api_base, model=config.llm.model, retry_config=RetryConfigBase(enabled=rcfg.enabled, max_retries=rcfg.max_retries, initial_delay=rcfg.initial_delay, max_delay=rcfg.max_delay, exponential_base=rcfg.exponential_base))
+    # Convert provider string to LLMProvider enum
+    from mini_agent.schema import LLMProvider
+    provider = LLMProvider.ANTHROPIC if config.llm.provider.lower() == "anthropic" else \
+               LLMProvider.OPENAI if config.llm.provider.lower() == "openai" else \
+               LLMProvider.DOUBAO
+    llm = LLMClient(
+        api_key=config.llm.api_key,
+        provider=provider,
+        api_base=config.llm.api_base,
+        model=config.llm.model,
+        retry_config=RetryConfigBase(enabled=rcfg.enabled, max_retries=rcfg.max_retries, initial_delay=rcfg.initial_delay, max_delay=rcfg.max_delay, exponential_base=rcfg.exponential_base),
+        request_timeout=config.llm.timeout.llm_request,
+    )
     reader, writer = await stdio_streams()
     AgentSideConnection(lambda conn: MiniMaxACPAgent(conn, config, llm, base_tools, system_prompt), writer, reader)
     logger.info("Mini-Agent ACP server running")

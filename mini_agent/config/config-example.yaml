@@ -1,5 +1,5 @@
 # Mini Agent Configuration Example
-# 
+#
 # Configuration File Locations (in priority order):
 # 1) mini_agent/config/config.yaml - Development mode (current directory)
 # 2) ~/.mini-agent/config/config.yaml - User config directory
@@ -20,9 +20,29 @@ api_key: "YOUR_API_KEY_HERE"  # Replace with your MiniMax API Key
 api_base: "https://api.minimax.io"   # Global users (default)
 # api_base: "https://api.minimaxi.com"  # China users
 model: "MiniMax-M2.1"
-# LLM provider: "anthropic" or "openai"
+# LLM provider: "anthropic" or "openai" or "doubao"
 # The LLMClient will automatically append /anthropic or /v1 to api_base based on provider
 provider: "anthropic"  # Default: anthropic
+
+# ===== Alternative LLM Providers =====
+# Uncomment and configure ONE of the following providers
+
+# --- Alibaba Qwen (阿里百炼) ---
+# api_key: "YOUR_QWEN_API_KEY"
+# For anthropic: 'https://dashscope.aliyuncs.com/apps/anthropic'
+# For openai: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+# api_base: "https://dashscope.aliyuncs.com/apps/anthropic"
+# model: "qwen3-max"  # Supported models: qwen-plus, qwen-max, qwen-turbo, etc.
+# provider: "anthropic"  # or "openai"
+
+# --- Doubao (豆包) - Volcano Engine (火山引擎) ---
+# api_key: "YOUR_DOUBAO_API_KEY"
+# For doubao, use Volcano Engine endpoints:
+# - Beijing: https://ark.cn-beijing.volces.com/api/v3
+# - Shanghai: https://ark.cn-shanghai.volces.com/api/v3
+# api_base: "https://ark.cn-beijing.volces.com/api/v3"
+# model: "doubao-pro-32k"  # Supported models: doubao-pro-32k, doubao-pro-128k, doubao-lite-128k, etc.
+# provider: "doubao"
 
 # ===== Retry Configuration =====
 retry:
@@ -50,11 +70,11 @@ tools:
   enable_file_tools: true  # File read/write/edit tools (ReadTool, WriteTool, EditTool)
   enable_bash: true        # Bash command execution tool
   enable_note: true        # Session note tool (SessionNoteTool)
-  
+
   # Claude Skills
   enable_skills: true      # Enable Skills
   skills_dir: "./skills"   # Skills directory path
-  
+
   # MCP Tools
   enable_mcp: true         # Enable MCP tools
   mcp_config_path: "mcp.json"  # MCP configuration file (same config directory)
@@ -81,8 +101,8 @@ tools:
     # Instructions for using existing browser:
     # 1. Close all Chrome/Chromium/Edge windows
     # 2. Launch browser with remote debugging:
-    #    - macOS: /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
-    #    - Linux: google-chrome --remote-debugging-port=9222
-    #    - Windows: "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
+    #    - macOS: /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir=$HOME/ChromeProfile/
+    #    - Linux: google-chrome --remote-debugging-port=9222 --user-data-dir=$HOME/ChromeProfile/
+    #    - Windows: "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir=$HOME/ChromeProfile/
     # 3. Navigate to sites and log in (cookies/session will be preserved)
     # 4. Run Mini Agent with use_existing_browser: true

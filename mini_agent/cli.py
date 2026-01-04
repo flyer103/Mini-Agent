@@ -415,7 +415,14 @@ async def run_agent(workspace_dir: Path):
         print(f"{Colors.DIM}   Retrying in {next_delay:.1f}s (attempt {attempt + 1})...{Colors.RESET}")
 
     # Convert provider string to LLMProvider enum
-    provider = LLMProvider.ANTHROPIC if config.llm.provider.lower() == "anthropic" else LLMProvider.OPENAI
+    if config.llm.provider.lower() == "anthropic":
+        provider = LLMProvider.ANTHROPIC
+    elif config.llm.provider.lower() == "openai":
+        provider = LLMProvider.OPENAI
+    elif config.llm.provider.lower() == "doubao":
+        provider = LLMProvider.DOUBAO
+    else:
+        raise ValueError(f"Unknown provider: {config.llm.provider}")
 
     llm_client = LLMClient(
         api_key=config.llm.api_key,

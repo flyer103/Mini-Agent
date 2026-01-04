@@ -10,6 +10,7 @@ from ..retry import RetryConfig
 from ..schema import LLMProvider, LLMResponse, Message
 from .anthropic_client import AnthropicClient
 from .base import LLMClientBase
+from .doubao_client import DoubaoClient
 from .openai_client import OpenAIClient
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ class LLMClient:
     Supported providers:
     - anthropic: Appends /anthropic to api_base
     - openai: Appends /v1 to api_base
+    - doubao: Uses Volcano Engine's OpenAI-compatible endpoint
     """
 
     def __init__(
@@ -40,9 +42,10 @@ class LLMClient:
 
         Args:
             api_key: API key for authentication
-            provider: LLM provider (anthropic or openai)
-            api_base: Base URL for the API (default: https://api.minimaxi.com)
-                     Will be automatically suffixed with /anthropic or /v1 based on provider
+            provider: LLM provider (anthropic, openai, or doubao)
+            api_base: Base URL for the API
+                     - For anthropic/openai: Will be suffixed with /anthropic or /v1
+                     - For doubao: Use Volcano Engine endpoint (default: https://ark.cn-beijing.volces.com/api/v3)
             model: Model name to use
             retry_config: Optional retry configuration
             request_timeout: Timeout for API requests in seconds
@@ -56,11 +59,14 @@ class LLMClient:
         # for backward compatibility
         api_base = api_base.replace("/anthropic", "")
 
-        # Append provider-specific suffix to api_base
+        # Append provider-specific suffix to api_base or use as-is for doubao
         if provider == LLMProvider.ANTHROPIC:
             full_api_base = f"{api_base.rstrip('/')}/anthropic"
         elif provider == LLMProvider.OPENAI:
             full_api_base = f"{api_base.rstrip('/')}/v1"
+        elif provider == LLMProvider.DOUBAO:
+            # Doubao uses OpenAI-compatible API, keep api_base as-is
+            full_api_base = api_base.rstrip('/')
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -78,6 +84,14 @@ class LLMClient:
             )
         elif provider == LLMProvider.OPENAI:
             self._client = OpenAIClient(
+                api_key=api_key,
+                api_base=full_api_base,
+                model=model,
+                retry_config=retry_config,
+                request_timeout=request_timeout,
+            )
+        elif provider == LLMProvider.DOUBAO:
+            self._client = DoubaoClient(
                 api_key=api_key,
                 api_base=full_api_base,
                 model=model,

@@ -9,6 +9,7 @@ class LLMProvider(str, Enum):
 
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
+    DOUBAO = "doubao"
 
 
 class FunctionCall(BaseModel):
