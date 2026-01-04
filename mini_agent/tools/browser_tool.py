@@ -291,9 +291,13 @@ Use this tool to visually inspect the current state of the web page.
 
 Parameters:
   - path: File path where the screenshot will be saved. Should end with .png
+  - full_page: Whether to capture the full scrollable page (default: true). Set to false to capture only the visible viewport.
+  - scroll_to_load: Whether to scroll the page to trigger lazy loading before capturing (default: true). Only applies when full_page=true.
 
 Examples:
-  - browser_screenshot(path="./workspace/screenshot.png")"""
+  - browser_screenshot(path="./workspace/screenshot.png")
+  - browser_screenshot(path="./workspace/viewport.png", full_page=false)
+  - browser_screenshot(path="./workspace/fullpage.png", full_page=true, scroll_to_load=true)"""
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -303,12 +307,22 @@ Examples:
                 "path": {
                     "type": "string",
                     "description": "File path where the screenshot will be saved. Should end with .png.",
+                },
+                "full_page": {
+                    "type": "boolean",
+                    "description": "Whether to capture the full scrollable page (default: true). Set to false to capture only the visible viewport.",
+                    "default": True,
+                },
+                "scroll_to_load": {
+                    "type": "boolean",
+                    "description": "Whether to scroll the page to trigger lazy loading before capturing (default: true). Only applies when full_page=true.",
+                    "default": True,
                 }
             },
             "required": ["path"],
         }
 
-    async def execute(self, path: str) -> ToolResult:
+    async def execute(self, path: str, full_page: bool = True, scroll_to_load: bool = True) -> ToolResult:
         """Take a screenshot and save to file."""
         try:
             from pathlib import Path
@@ -326,12 +340,42 @@ Examples:
             screenshot_path = Path(path)
             screenshot_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Take screenshot
-            await page.screenshot(path=str(screenshot_path), full_page=True)
+            # If full_page is enabled and scroll_to_load is enabled, scroll to trigger lazy loading
+            if full_page and scroll_to_load:
+                try:
+                    # Scroll to bottom of page to trigger lazy loading
+                    await page.evaluate("""
+                        async () => {
+                            // Smooth scroll to bottom to trigger lazy loading
+                            const scrollHeight = document.documentElement.scrollHeight;
+                            const viewportHeight = window.innerHeight;
 
+                            // Scroll down step by step to trigger incremental loading
+                            for (let y = 0; y < scrollHeight; y += viewportHeight) {
+                                window.scrollTo(0, y);
+                                // Wait a bit for content to load
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                            }
+
+                            // Scroll back to top
+                            window.scrollTo(0, 0);
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                        }
+                    """)
+
+                    # Wait additional time for any final dynamic content to load
+                    await asyncio.sleep(0.5)
+                except Exception as scroll_error:
+                    print(f"Warning: Failed to scroll page for lazy loading (non-critical): {scroll_error}")
+                    # Continue with screenshot even if scrolling fails
+
+            # Take screenshot
+            await page.screenshot(path=str(screenshot_path), full_page=full_page)
+
+            page_info = "full page" if full_page else "viewport"
             return ToolResult(
                 success=True,
-                content=f"Screenshot saved to: {screenshot_path.absolute()}"
+                content=f"Screenshot saved to: {screenshot_path.absolute()} ({page_info})"
             )
 
         except Exception as e:
