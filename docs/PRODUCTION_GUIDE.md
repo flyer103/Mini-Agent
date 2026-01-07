@@ -34,7 +34,7 @@ This project is a **teaching-level demo** that demonstrates the core concepts an
 
 ### 2.2 Model Fallback Mechanism
 
-Currently using a single fixed model (MiniMax-M2), which will directly report errors on failure.
+Currently using a single fixed model (MiniMax-M2.1), which will directly report errors on failure.
 
 - Introduce a model pool by configuring multiple model accounts to improve availability
 - Introduce automatic health checks, failure removal, circuit breaker strategies for the model pool
@@ -142,7 +142,7 @@ USER agent
 RUN uv sync
 
 # Start the application
-CMD ["uv", "run", "python", "main.py"]
+CMD ["uv", "run", "mini-agent"]
 ```
 
 #### 3.3.2 File System Permissions

@@ -26,15 +26,22 @@ class LLMClient:
     Supported providers:
     - anthropic: Appends /anthropic to api_base
     - openai: Appends /v1 to api_base
-    - doubao: Uses Volcano Engine's OpenAI-compatible endpoint
+    - doubao: Uses Volcano Engine's OpenAI-compatible endpoint (no suffix added)
+
+    For MiniMax API (api.minimax.io or api.minimaxi.com), special handling ensures
+    correct suffixes are applied based on provider.
+    For third-party APIs (e.g., https://api.siliconflow.cn/v1), api_base is used as-is.
     """
+
+    # MiniMax API domains that need automatic suffix handling
+    MINIMAX_DOMAINS = ("api.minimax.io", "api.minimaxi.com")
 
     def __init__(
         self,
         api_key: str,
         provider: LLMProvider = LLMProvider.ANTHROPIC,
         api_base: str = "https://api.minimaxi.com",
-        model: str = "MiniMax-M2",
+        model: str = "MiniMax-M2.1",
         retry_config: RetryConfig | None = None,
         request_timeout: float = 60.0,
     ):
@@ -43,9 +50,11 @@ class LLMClient:
         Args:
             api_key: API key for authentication
             provider: LLM provider (anthropic, openai, or doubao)
-            api_base: Base URL for the API
+            api_base: Base URL for the API (default: https://api.minimaxi.com)
                      - For anthropic/openai: Will be suffixed with /anthropic or /v1
                      - For doubao: Use Volcano Engine endpoint (default: https://ark.cn-beijing.volces.com/api/v3)
+                     For MiniMax API, suffix is auto-appended based on provider.
+                     For third-party APIs (e.g., https://api.siliconflow.cn/v1), used as-is.
             model: Model name to use
             retry_config: Optional retry configuration
             request_timeout: Timeout for API requests in seconds
@@ -56,19 +65,34 @@ class LLMClient:
         self.retry_config = retry_config or RetryConfig()
         self.request_timeout = request_timeout
 
-        # for backward compatibility
-        api_base = api_base.replace("/anthropic", "")
+        # Normalize api_base (remove trailing slash) and strip existing suffixes if present
+        api_base = api_base.rstrip("/")
 
-        # Append provider-specific suffix to api_base or use as-is for doubao
-        if provider == LLMProvider.ANTHROPIC:
-            full_api_base = f"{api_base.rstrip('/')}/anthropic"
-        elif provider == LLMProvider.OPENAI:
-            full_api_base = f"{api_base.rstrip('/')}/v1"
-        elif provider == LLMProvider.DOUBAO:
-            # Doubao uses OpenAI-compatible API, keep api_base as-is
+        # Special handling for doubao (no suffix added)
+        if provider == LLMProvider.DOUBAO:
             full_api_base = api_base.rstrip('/')
         else:
-            raise ValueError(f"Unsupported provider: {provider}")
+            # For anthropic/openai, check if this is a MiniMax API endpoint
+            is_minimax = any(domain in api_base for domain in self.MINIMAX_DOMAINS)
+
+            if is_minimax:
+                # For MiniMax API, ensure correct suffix based on provider
+                # Strip any existing suffix first
+                base_without_suffix = api_base.replace("/anthropic", "").replace("/v1", "")
+                if provider == LLMProvider.ANTHROPIC:
+                    full_api_base = f"{base_without_suffix}/anthropic"
+                elif provider == LLMProvider.OPENAI:
+                    full_api_base = f"{base_without_suffix}/v1"
+                else:
+                    raise ValueError(f"Unsupported provider: {provider}")
+            else:
+                # For third-party APIs, append provider-specific suffix
+                if provider == LLMProvider.ANTHROPIC:
+                    full_api_base = f"{api_base}/anthropic"
+                elif provider == LLMProvider.OPENAI:
+                    full_api_base = f"{api_base}/v1"
+                else:
+                    raise ValueError(f"Unsupported provider: {provider}")
 
         self.api_base = full_api_base
 

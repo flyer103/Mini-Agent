@@ -28,7 +28,7 @@ class AnthropicClient(LLMClientBase):
         self,
         api_key: str,
         api_base: str = "https://api.minimaxi.com/anthropic",
-        model: str = "MiniMax-M2",
+        model: str = "MiniMax-M2.1",
         retry_config: RetryConfig | None = None,
         request_timeout: float = 60.0,
     ):
@@ -37,7 +37,7 @@ class AnthropicClient(LLMClientBase):
         Args:
             api_key: API key for authentication
             api_base: Base URL for the API (default: MiniMax Anthropic endpoint)
-            model: Model name to use (default: MiniMax-M2)
+            model: Model name to use (default: MiniMax-M2.1)
             retry_config: Optional retry configuration
             request_timeout: Timeout for API requests in seconds
         """
