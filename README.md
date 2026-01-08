@@ -11,6 +11,7 @@ This project comes packed with features designed for a robust and intelligent ag
 *   ✅ **Full Agent Execution Loop**: A complete and reliable foundation with a basic toolset for file system and shell operations.
 *   ✅ **Persistent Memory**: An active **Session Note Tool** ensures the agent retains key information across multiple sessions.
 *   ✅ **Intelligent Context Management**: Automatically summarizes conversation history to handle contexts up to a configurable token limit, enabling infinitely long tasks.
+*   ✅ **LaMer-Inspired Reflection & Meta-Learning**: Optional enhanced capabilities with in-context policy adaptation via reflection and cross-episode learning (`--lamer` flag).
 *   ✅ **Claude Skills Integration**: Comes with 15 professional skills for documents, design, testing, and development.
 *   ✅ **Multi-LLM Support**: Extensible architecture supporting MiniMax, Claude, OpenAI, and Doubao (豆包) models.
 *   ✅ **Interleaved Thinking**: Full support for reasoning tokens in models that support it (MiniMax, Claude).
@@ -127,6 +128,7 @@ model: "MiniMax-M2.1"
 ```bash
 mini-agent                                    # Use current directory as workspace
 mini-agent --workspace /path/to/your/project  # Specify workspace directory
+mini-agent --lamer                            # Enable LaMer enhanced capabilities
 mini-agent --version                          # Check version
 
 # Management commands
@@ -134,6 +136,8 @@ uv tool upgrade mini-agent                    # Upgrade to latest version
 uv tool uninstall mini-agent                  # Uninstall if needed
 uv tool list                                  # View all installed tools
 ```
+
+> 💡 **LaMer Enhanced Mode**: Use `--lamer` flag to enable reflection and meta-learning capabilities. The agent will learn from past executions and adapt its strategies for better long-term performance.
 
 #### 🔧 Development Mode
 
@@ -206,7 +210,10 @@ uv tool install -e .
 # After installation, run from anywhere and code changes take effect immediately
 mini-agent
 mini-agent --workspace /path/to/your/project
+mini-agent --lamer  # Enable LaMer enhanced capabilities
 ```
+
+> 💡 **LaMer Enhanced Mode**: The `--lamer` flag enables reflection and meta-learning, allowing the agent to learn from past task executions and improve over time. Reflections are stored in `workspace/reflections/`.
 
 > 📖 For more development guidance, see [Development Guide](docs/DEVELOPMENT_GUIDE.md)
 
@@ -261,6 +268,20 @@ Here are a few examples of what Mini Agent can do.
 *This demo shows the agent using its web search tool to find up-to-date information online and summarize it for the user.*
 
 ![Demo GIF 3: Web Search](docs/assets/demo3-web-search.gif "Web Search Demo")
+
+### LaMer Enhanced Mode (Reflection & Meta-Learning)
+
+*When using the `--lamer` flag, Mini Agent learns from each task execution, automatically generating reflections and adapting its strategies for better performance on similar tasks in the future. Reflections are stored in `workspace/reflections/` and can be used across sessions.*
+
+```bash
+mini-agent --lamer
+```
+
+*Key benefits of LaMer mode:*
+- **In-Context Policy Adaptation**: The agent reflects on past executions and adapts its behavior without retraining
+- **Cross-Episode Learning**: Strategies and tool preferences are learned and applied across different tasks
+- **Improved Exploration**: Better balance between exploration and exploitation based on past experiences
+- **Persistent Learning**: Reflections are saved to disk and can be reused across multiple sessions
 
 ## Testing
 

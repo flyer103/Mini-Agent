@@ -9,7 +9,10 @@
 *   ✅ **完整的 Agent 执行循环**：一个完整可靠的执行框架，配备了文件系统和 Shell 操作的基础工具集。
 *   ✅ **持久化记忆**：通过内置的 **Session Note Tool**，Agent 能够在多个会话中保留关键信息。
 *   ✅ **智能上下文管理**：自动对会话历史进行摘要，可处理长达可配置 Token 上限的上下文，从而支持无限长的任务。
+*   ✅ **LaMer 启发的反思与元学习**：可选的增强功能，通过反思和跨任务学习实现上下文策略自适应（`--lamer` 标志）。
 *   ✅ **集成 Claude Skills**：内置 15 种专业技能，涵盖文档处理、设计、测试和开发等领域。
+*   ✅ **多 LLM 支持**：可扩展架构，支持 MiniMax、Claude、OpenAI 和 Doubao（豆包）模型。
+*   ✅ **交错思维（Interleaved Thinking）**：完全支持支持该功能的模型中的推理 Token（MiniMax、Claude）。
 *   ✅ **集成 MCP 工具**：原生支持 MCP 协议，可轻松接入知识图谱、网页搜索等工具。
 *   ✅ **全面的日志记录**：为每个请求、响应和工具执行提供详细日志，便于调试。
 *   ✅ **简洁明了的设计**：美观的命令行界面和易于理解的代码库，使其成为构建高级 Agent 的理想起点。
@@ -123,6 +126,7 @@ model: "MiniMax-M2.1"
 ```bash
 mini-agent                                    # 使用当前目录作为工作空间
 mini-agent --workspace /path/to/your/project  # 指定工作空间目录
+mini-agent --lamer                            # 启用 LaMer 增强功能
 mini-agent --version                          # 查看版本信息
 
 # 管理命令
@@ -130,6 +134,8 @@ uv tool upgrade mini-agent                    # 升级到最新版本
 uv tool uninstall mini-agent                  # 卸载工具（如需要）
 uv tool list                                  # 查看所有已安装的工具
 ```
+
+> 💡 **LaMer 增强模式**：使用 `--lamer` 标志启用反思和元学习功能，Agent 将从过往执行中学习并调整策略，以获得更好的长期性能表现。
 
 #### 🔧 开发模式
 
@@ -202,7 +208,10 @@ uv tool install -e .
 # 安装后，您可以在任何路径下运行，且代码更改会立即生效
 mini-agent
 mini-agent --workspace /path/to/your/project
+mini-agent --lamer  # 启用 LaMer 增强功能
 ```
+
+> 💡 **LaMer 增强模式**：`--lamer` 标志启用反思和元学习，使 Agent 能够从过往任务执行中学习，并随着时间的推移不断改进。反思数据存储在 `workspace/reflections/` 中。
 
 > 📖 更多开发指引，请参阅 [开发指南](docs/DEVELOPMENT_GUIDE_CN.md)
 
@@ -257,6 +266,20 @@ Mini Agent 支持 [Agent Communication Protocol (ACP)](https://github.com/modelc
 *此演示展示了 Agent 如何使用其网页搜索工具在线查找最新信息，并为用户进行总结。*
 
 ![演示动图 3: 网页搜索](docs/assets/demo3-web-search.gif "网页搜索演示")
+
+### LaMer 增强模式（反思与元学习）
+
+*使用 `--lamer` 标志时，Mini Agent 会从每次任务执行中学习，自动生成反思并调整策略，以便在未来执行类似任务时获得更好的性能。反思数据存储在 `workspace/reflections/` 中，可在多个会话间使用。*
+
+```bash
+mini-agent --lamer
+```
+
+*LaMer 模式的主要优势：*
+- **上下文策略自适应**：Agent 反思过往执行过程并在无需重新训练的情况下调整行为
+- **跨任务学习**：策略和工具偏好被学习并应用于不同任务
+- **改进的探索能力**：基于过往经验更好地平衡探索与利用
+- **持久化学习**：反思数据保存到磁盘，可在多个会话中重复使用
 
 
 ## 测试

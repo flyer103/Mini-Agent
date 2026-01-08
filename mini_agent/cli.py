@@ -116,6 +116,12 @@ def print_help():
   {Colors.BRIGHT_CYAN}↑/↓{Colors.RESET}        - Browse command history
   {Colors.BRIGHT_CYAN}→{Colors.RESET}          - Accept auto-suggestion
 
+{Colors.BOLD}{Colors.BRIGHT_YELLOW}LaMer Enhanced Features:{Colors.RESET}
+  When using --lamer flag:
+  - {Colors.BRIGHT_CYAN}Reflection{Colors.RESET}: Agent learns from past executions
+  - {Colors.BRIGHT_CYAN}Meta-Learning{Colors.RESET}: Cross-episode strategy adaptation
+  - Reflections stored in workspace/reflections/
+
 {Colors.BOLD}{Colors.BRIGHT_YELLOW}Usage:{Colors.RESET}
   - Enter your task directly, Agent will help you complete it
   - Agent remembers all conversation content in this session
@@ -200,6 +206,7 @@ def parse_args() -> argparse.Namespace:
 Examples:
   mini-agent                              # Use current directory as workspace
   mini-agent --workspace /path/to/dir     # Use specific workspace directory
+  mini-agent --lamer                      # Enable LaMer enhanced capabilities
         """,
     )
     parser.add_argument(
@@ -208,6 +215,11 @@ Examples:
         type=str,
         default=None,
         help="Workspace directory (default: current directory)",
+    )
+    parser.add_argument(
+        "--lamer",
+        action="store_true",
+        help="Enable LaMer enhanced capabilities (reflection + meta-learning)",
     )
     parser.add_argument(
         "--version",
@@ -363,11 +375,12 @@ def add_workspace_tools(tools: List[Tool], config: Config, workspace_dir: Path):
         print(f"{Colors.GREEN}✅ Loaded session note tool{Colors.RESET}")
 
 
-async def run_agent(workspace_dir: Path):
-    """Run interactive Agent
+async def run_agent(workspace_dir: Path, enable_lamer: bool = False):
+    """Run interactive Agent with optional LaMer enhancements.
 
     Args:
         workspace_dir: Workspace directory path
+        enable_lamer: Whether to enable LaMer enhanced capabilities
     """
     session_start = datetime.now()
 
@@ -487,18 +500,22 @@ async def run_agent(workspace_dir: Path):
         # Remove placeholder if skills not enabled
         system_prompt = system_prompt.replace("{SKILLS_METADATA}", "")
 
-    # 7. Create Agent
+    # 7. Create Agent (with optional LaMer enhancements)
     agent = Agent(
         llm_client=llm_client,
         system_prompt=system_prompt,
         tools=tools,
         max_steps=config.agent.max_steps,
         workspace_dir=str(workspace_dir),
+        enable_reflection=enable_lamer,
+        enable_meta_learning=enable_lamer,
     )
 
     # 8. Display welcome information
     print_banner()
     print_session_info(agent, workspace_dir, config.llm.model, config_path)
+    if enable_lamer:
+        print(f"{Colors.BRIGHT_CYAN}✨ LaMer Mode Active: Reflection and Meta-Learning Enabled{Colors.RESET}")
 
     # 9. Setup prompt_toolkit session
     # Command completer
@@ -650,7 +667,7 @@ def main():
 
     # Run the agent (config always loaded from package directory)
     try:
-        asyncio.run(run_agent(workspace_dir))
+        asyncio.run(run_agent(workspace_dir, enable_lamer=args.lamer))
     except KeyboardInterrupt:
         # Ctrl+C or SIGINT was sent - normal exit
         print(f"\n{Colors.BRIGHT_CYAN}Shutdown complete.{Colors.RESET}")

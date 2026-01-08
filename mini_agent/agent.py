@@ -1,9 +1,10 @@
-"""Core Agent implementation."""
+"""Core Agent implementation with optional LaMer-inspired Meta-RL capabilities."""
 
 import asyncio
 import json
 import time
 from pathlib import Path
+from typing import Optional
 
 import tiktoken
 
@@ -14,6 +15,14 @@ from .progress import ProgressIndicator
 from .schema import Message
 from .tools.base import Tool, ToolResult
 from .utils import calculate_display_width
+
+
+# LaMer imports (only loaded when enabled)
+try:
+    from .reflection import ReflectionSystem, MetaLearningSystem, ExecutionEpisode
+    LAMER_AVAILABLE = True
+except ImportError:
+    LAMER_AVAILABLE = False
 
 
 # ANSI color codes
@@ -44,7 +53,7 @@ class Colors:
 
 
 class Agent:
-    """Single agent with basic tools and MCP support."""
+    """Agent with basic tools, MCP support, and optional LaMer-inspired reflection and meta-learning capabilities."""
 
     def __init__(
         self,
@@ -54,6 +63,8 @@ class Agent:
         max_steps: int = 50,
         workspace_dir: str = "./workspace",
         token_limit: int = 80000,  # Summary triggered when tokens exceed this value
+        enable_reflection: bool = False,
+        enable_meta_learning: bool = False,
     ):
         self.llm = llm_client
         self.tools = {tool.name: tool for tool in tools}
@@ -64,10 +75,35 @@ class Agent:
         # Ensure workspace exists
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
 
+        # LaMer configuration
+        self.enable_reflection = enable_reflection and LAMER_AVAILABLE
+        self.enable_meta_learning = enable_meta_learning and LAMER_AVAILABLE
+
+        # Initialize LaMer systems if enabled
+        if self.enable_reflection:
+            self.reflection_system = ReflectionSystem(
+                llm_client,
+                reflection_dir=str(self.workspace_dir / "reflections")
+            )
+
+        if self.enable_meta_learning:
+            self.meta_learning_system = MetaLearningSystem(
+                self.reflection_system if self.enable_reflection else None
+            )
+
+        # Track current task for episode creation
+        self.current_task_description: str = ""
+        self.task_start_time: float = 0
+
         # Inject workspace information into system prompt if not already present
         if "Current Workspace" not in system_prompt:
             workspace_info = f"\n\n## Current Workspace\nYou are currently working in: `{self.workspace_dir.absolute()}`\nAll relative paths will be resolved relative to this directory."
             system_prompt = system_prompt + workspace_info
+
+        # Inject LaMer capabilities into system prompt if enabled
+        if self.enable_reflection or self.enable_meta_learning:
+            from .lamer_config import LAMER_SYSTEM_PROMPT_ADDITIONS
+            system_prompt += LAMER_SYSTEM_PROMPT_ADDITIONS
 
         self.system_prompt = system_prompt
 
@@ -83,7 +119,9 @@ class Agent:
         self._skip_next_token_check: bool = False
 
     def add_user_message(self, content: str):
-        """Add a user message to history."""
+        """Add a user message to history and track as current task (for LaMer)."""
+        self.current_task_description = content
+        self.task_start_time = time.time()
         self.messages.append(Message(role="user", content=content))
 
     def _estimate_tokens(self) -> int:
@@ -283,10 +321,51 @@ Requirements:
             return summary_content
 
     async def run(self) -> str:
-        """Execute agent loop until task is complete or max steps reached."""
+        """Execute agent loop with optional reflection and meta-learning capabilities."""
         # Start new run, initialize log file
         self.logger.start_new_run()
         print(f"{Colors.DIM}📝 Log file: {self.logger.get_log_file_path()}{Colors.RESET}")
+
+        # Get exploration guidance if LaMer is enabled
+        exploration_guidance = ""
+        if self.enable_meta_learning and self.current_task_description:
+            exploration_guidance = self.meta_learning_system.get_exploration_guidance(
+                self.current_task_description
+            )
+
+            # Add exploration guidance to system context if available
+            if exploration_guidance:
+                guidance_message = Message(
+                    role="user",
+                    content=f"[Exploration Guidance]\n{exploration_guidance}"
+                )
+                # Insert after system prompt but before user message
+                if len(self.messages) >= 2:
+                    self.messages.insert(1, guidance_message)
+                else:
+                    self.messages.append(guidance_message)
+
+        # Get relevant reflections if LaMer is enabled
+        relevant_reflections = []
+        if self.enable_reflection and self.current_task_description:
+            relevant_reflections = self.reflection_system.get_relevant_reflections(
+                self.current_task_description
+            )
+
+            # Add reflections to context if available
+            if relevant_reflections:
+                reflections_text = "[Past Reflections]\n" + "\n".join(
+                    f"{i+1}. {ref}" for i, ref in enumerate(relevant_reflections)
+                )
+                reflections_message = Message(
+                    role="user",
+                    content=reflections_text
+                )
+                # Insert after system prompt and any exploration guidance
+                insert_pos = 1
+                if exploration_guidance:
+                    insert_pos = 2
+                self.messages.insert(insert_pos, reflections_message)
 
         step = 0
 
@@ -365,7 +444,7 @@ Requirements:
 
             # Check if task is complete (no tool calls)
             if not response.tool_calls:
-                return response.content
+                break
 
             # Execute tool calls
             for tool_call in response.tool_calls:
@@ -458,10 +537,49 @@ Requirements:
 
             step += 1
 
-        # Max steps reached
-        error_msg = f"Task couldn't be completed after {self.max_steps} steps."
-        print(f"\n{Colors.BRIGHT_YELLOW}⚠️  {error_msg}{Colors.RESET}")
-        return error_msg
+        # Task completed or max steps reached
+        if step >= self.max_steps:
+            result = f"Task couldn't be completed after {self.max_steps} steps."
+            print(f"\n{Colors.BRIGHT_YELLOW}⚠️  {result}{Colors.RESET}")
+        else:
+            result = response.content if response.content else "Task completed."
+
+        # Generate and store reflections if LaMer is enabled
+        if self.enable_reflection:
+            success = not (result.startswith("❌") or result.startswith("⚠️") or
+                          "couldn't be completed" in result)
+
+            episode = ExecutionEpisode(
+                task_description=self.current_task_description,
+                messages=self.messages.copy(),
+                success=success,
+                final_outcome=result,
+                execution_time=time.time() - self.task_start_time,
+                tools_used=list(set([
+                    msg.name for msg in self.messages
+                    if msg.role == "tool" and msg.name
+                ]))
+            )
+
+            # Generate and store reflections
+            reflections = await self.reflection_system.add_episode(episode)
+            print(f"\n💡 Generated {len(reflections)} reflections for future learning!")
+
+            # Update meta-learning strategies if enabled
+            if self.enable_meta_learning:
+                # Extract strategy updates from reflections
+                strategy_update = {
+                    'preferred_tools': episode.tools_used,
+                    'reflection_guidance': reflections[:3]  # Top 3 reflections
+                }
+                task_type = self.meta_learning_system._classify_task_type(
+                    self.current_task_description
+                )
+                self.meta_learning_system.update_exploration_strategy(
+                    task_type, strategy_update
+                )
+
+        return result
 
     def get_history(self) -> list[Message]:
         """Get message history."""
