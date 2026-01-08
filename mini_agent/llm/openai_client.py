@@ -249,19 +249,29 @@ class OpenAIClient(LLMClientBase):
         tool_calls = []
         if message.tool_calls:
             for tool_call in message.tool_calls:
-                # Parse arguments from JSON string
-                arguments = json.loads(tool_call.function.arguments)
+                try:
+                    # Parse arguments from JSON string
+                    arguments = json.loads(tool_call.function.arguments)
 
-                tool_calls.append(
-                    ToolCall(
-                        id=tool_call.id,
-                        type="function",
-                        function=FunctionCall(
-                            name=tool_call.function.name,
-                            arguments=arguments,
-                        ),
+                    tool_calls.append(
+                        ToolCall(
+                            id=tool_call.id,
+                            type="function",
+                            function=FunctionCall(
+                                name=tool_call.function.name,
+                                arguments=arguments,
+                            ),
+                        )
                     )
-                )
+                except json.JSONDecodeError as e:
+                    # Skip invalid tool calls and log the error
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        "Skipping invalid tool call from LLM: %s - Raw arguments: %s",
+                        e,
+                        repr(tool_call.function.arguments)
+                    )
 
         # Extract token usage from response
         usage = None
