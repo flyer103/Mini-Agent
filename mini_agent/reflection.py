@@ -66,7 +66,7 @@ Format each reflection as a concise bullet point starting with "- ".
         try:
             response = await self.llm.generate(
                 messages=[
-                    {"role": "user", "content": reflection_prompt}
+                    Message(role="user", content=reflection_prompt)
                 ]
             )
             
@@ -129,13 +129,21 @@ Format each reflection as a concise bullet point starting with "- ".
         filename = f"episode_{timestamp}.json"
         filepath = self.reflection_dir / filename
         
-        episode_data = asdict(episode)
+        # Manually construct episode data to handle Pydantic models properly
+        episode_data = {
+            'task_description': episode.task_description,
+            'success': episode.success,
+            'final_outcome': episode.final_outcome,
+            'execution_time': episode.execution_time,
+            'tools_used': episode.tools_used,
+            'reflections': episode.reflections,
+        }
         # Convert messages to dict format for serialization
         episode_data['messages'] = [
             {
                 'role': msg.role,
                 'content': msg.content,
-                'tool_calls': msg.tool_calls,
+                'tool_calls': [tc.model_dump() for tc in msg.tool_calls] if msg.tool_calls else None,
                 'tool_call_id': msg.tool_call_id,
                 'name': msg.name,
                 'thinking': msg.thinking
