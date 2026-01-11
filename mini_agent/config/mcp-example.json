@@ -42,6 +42,19 @@
         "mini_agent.acp.mermaid_mcp"
       ],
       "disabled": false
+    },
+    "perplexity": {
+      "description": "Perplexity MCP Server - Connect to Perplexity's search and reasoning capabilities",
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@perplexity-ai/mcp-server"
+      ],
+      "env": {
+        "PERPLEXITY_API_KEY": ""
+      },
+      "disabled": false
     }
   }
 }
