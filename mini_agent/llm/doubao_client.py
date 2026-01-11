@@ -7,7 +7,7 @@ hosted on Volcano Engine (火山引擎).
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, AsyncIterator
 
 from openai import AsyncOpenAI
 
@@ -313,3 +313,58 @@ class DoubaoClient(LLMClientBase):
 
         # Parse and return response
         return self._parse_response(response)
+
+    async def generate_stream(
+        self,
+        messages: list[Message],
+        tools: list[Any] | None = None,
+    ) -> AsyncIterator[LLMResponse]:
+        """Generate streaming response from Doubao LLM.
+
+        Args:
+            messages: List of conversation messages
+            tools: Optional list of available tools
+
+        Yields:
+            LLMResponse chunks as they become available
+        """
+        _, api_messages = self._convert_messages(messages)
+
+        params = {
+            "model": self.model,
+            "messages": api_messages,
+            "stream": True,  # Enable streaming
+        }
+
+        if tools:
+            params["tools"] = self._convert_tools(tools)
+
+        # Use OpenAI SDK's streaming API with timeout
+        try:
+            # Show progress indicator if progress is enabled (timeout > 0)
+            if hasattr(self, 'request_timeout') and self.request_timeout > 0:
+                progress = ProgressIndicator("Waiting for LLM response", True)
+                progress.start()
+                try:
+                    stream = await asyncio.wait_for(
+                        self.client.chat.completions.stream(**params).__aenter__(),
+                        timeout=self.request_timeout
+                    )
+                finally:
+                    progress.stop()
+            else:
+                # No timeout or progress indication
+                stream = await self.client.chat.completions.stream(**params).__aenter__()
+
+            try:
+                async for chunk in stream:
+                    # Process each chunk and yield partial response
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+                        yield LLMResponse(content=content)
+            finally:
+                await stream.__aexit__(None, None, None)
+        except asyncio.TimeoutError:
+            raise LLMTimeoutError(self.request_timeout)
+        except Exception as e:
+            raise e

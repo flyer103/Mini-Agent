@@ -6,7 +6,7 @@ implementing routing strategies and automatic failover for high availability.
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, AsyncIterator
 
 from ..retry import RetryConfig
 from ..schema import LLMResponse, Message
@@ -182,6 +182,79 @@ class LLMProxyClient:
 
         # All providers failed
         error_msg = f"All {len(attempted_providers)} providers failed. Last error: {last_exception}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
+
+    async def generate_stream(self, messages: list[Message], tools: list | None = None) -> AsyncIterator[LLMResponse]:
+        """Generate streaming response using proxy with automatic failover.
+
+        Attempts to generate a streaming response by trying providers in the order
+        determined by the routing strategy. If a provider fails, the next
+        provider is tried automatically.
+
+        Args:
+            messages: List of conversation messages
+            tools: Optional list of available tools
+
+        Yields:
+            LLMResponse chunks from the first successful provider
+
+        Raises:
+            Exception: If all providers fail
+        """
+        last_exception = None
+        attempted_providers = []
+
+        # Try providers in the order specified by the router
+        for provider_name in self.router.get_providers():
+            # Check if provider is available
+            if not self._is_provider_available(provider_name):
+                continue
+
+            attempted_providers.append(provider_name)
+            provider_info = self.providers[provider_name]
+            provider_cfg = provider_info["config"]
+
+            try:
+                logger.debug("Attempting streaming request to provider: %s", provider_name)
+
+                # Create client for this provider
+                client = self._create_client(provider_cfg)
+
+                # Generate streaming response
+                async for chunk in client.generate_stream(messages, tools):
+                    # Record success
+                    provider_info["health_checker"].record_success()
+                    self.router.on_success(provider_name)
+
+                    logger.info(
+                        "Streaming request succeeded with provider: %s (tried: %s)",
+                        provider_name,
+                        attempted_providers,
+                    )
+
+                    yield chunk
+
+            except Exception as e:
+                # Record failure
+                should_mark_unhealthy = provider_info["health_checker"].record_failure()
+                last_exception = e
+
+                logger.warning(
+                    "Provider %s failed during streaming: %s (unhealthy: %s, tried: %s)",
+                    provider_name,
+                    str(e)[:200],  # Log first 200 chars
+                    should_mark_unhealthy,
+                    attempted_providers,
+                )
+
+                self.router.on_failure(provider_name)
+
+                # Try next provider
+                continue
+
+        # All providers failed
+        error_msg = f"All {len(attempted_providers)} providers failed during streaming. Last error: {last_exception}"
         logger.error(error_msg)
         raise Exception(error_msg)
 

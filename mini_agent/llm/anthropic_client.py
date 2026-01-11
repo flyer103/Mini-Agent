@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, AsyncIterator
 
 import anthropic
 
@@ -307,3 +307,70 @@ class AnthropicClient(LLMClientBase):
 
         # Parse and return response
         return self._parse_response(response)
+
+    async def generate_stream(
+        self,
+        messages: list[Message],
+        tools: list[Any] | None = None,
+    ) -> AsyncIterator[LLMResponse]:
+        """Generate streaming response from Anthropic LLM.
+
+        Args:
+            messages: List of conversation messages
+            tools: Optional list of available tools
+
+        Yields:
+            LLMResponse chunks as they become available
+        """
+        system_message, api_messages = self._convert_messages(messages)
+
+        params = {
+            "model": self.model,
+            "max_tokens": 16384,
+            "messages": api_messages,
+            "stream": True,  # Enable streaming
+        }
+
+        if system_message:
+            params["system"] = system_message
+        if tools:
+            params["tools"] = self._convert_tools(tools)
+
+        # Use Anthropic SDK's streaming API with timeout
+        try:
+            # Show progress indicator if progress is enabled (timeout > 0)
+            if hasattr(self, 'request_timeout') and self.request_timeout > 0:
+                progress = ProgressIndicator("Waiting for LLM response", True)
+                progress.start()
+                try:
+                    stream = await asyncio.wait_for(
+                        self.client.messages.stream(**params).__aenter__(),
+                        timeout=self.request_timeout
+                    )
+                finally:
+                    progress.stop()
+            else:
+                # No timeout or progress indication
+                stream = await self.client.messages.stream(**params).__aenter__()
+
+            try:
+                async for chunk in stream:
+                    # Process each chunk and yield partial response
+                    if chunk.type == "content_block_start":
+                        content = chunk.content_block.text if hasattr(chunk.content_block, 'text') else ""
+                        yield LLMResponse(content=content)
+                    elif chunk.type == "content_block_delta":
+                        content = chunk.delta.text if hasattr(chunk.delta, 'text') else ""
+                        yield LLMResponse(content=content)
+                    elif chunk.type == "content_block_stop":
+                        # End of content block
+                        pass
+                    elif chunk.type == "message_stop":
+                        # End of message
+                        break
+            finally:
+                await stream.__aexit__(None, None, None)
+        except asyncio.TimeoutError:
+            raise LLMTimeoutError(self.request_timeout)
+        except Exception as e:
+            raise e

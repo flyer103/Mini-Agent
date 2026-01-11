@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, AsyncIterator
 
 import tiktoken
 
@@ -12,7 +12,7 @@ from .exceptions import ToolTimeoutError
 from .llm import LLMClient
 from .logger import AgentLogger
 from .progress import ProgressIndicator
-from .schema import Message
+from .schema import LLMResponse, Message
 from .tools.base import Tool, ToolResult
 from .utils import calculate_display_width
 
@@ -495,6 +495,285 @@ Requirements:
                             success=False,
                             content="",
                             error=error_msg,
+                        )
+                    except Exception as e:
+                        # Catch all exceptions during tool execution, convert to failed ToolResult
+                        import traceback
+
+                        error_detail = f"{type(e).__name__}: {str(e)}"
+                        error_trace = traceback.format_exc()
+                        result = ToolResult(
+                            success=False,
+                            content="",
+                            error=f"Tool execution failed: {error_detail}\n\nTraceback:\n{error_trace}",
+                        )
+
+                # Log tool execution result
+                self.logger.log_tool_result(
+                    tool_name=function_name,
+                    arguments=arguments,
+                    result_success=result.success,
+                    result_content=result.content if result.success else None,
+                    result_error=result.error if not result.success else None,
+                )
+
+                # Print result
+                if result.success:
+                    result_text = result.content
+                    if len(result_text) > 300:
+                        result_text = result_text[:300] + f"{Colors.DIM}...{Colors.RESET}"
+                    print(f"{Colors.BRIGHT_GREEN}✓ Result:{Colors.RESET} {result_text}")
+                else:
+                    print(f"{Colors.BRIGHT_RED}✗ Error:{Colors.RESET} {Colors.RED}{result.error}{Colors.RESET}")
+
+                # Add tool result message
+                tool_msg = Message(
+                    role="tool",
+                    content=result.content if result.success else f"Error: {result.error}",
+                    tool_call_id=tool_call_id,
+                    name=function_name,
+                )
+                self.messages.append(tool_msg)
+
+            step += 1
+
+        # Task completed or max steps reached
+        if step >= self.max_steps:
+            result = f"Task couldn't be completed after {self.max_steps} steps."
+            print(f"\n{Colors.BRIGHT_YELLOW}⚠️  {result}{Colors.RESET}")
+        else:
+            result = response.content if response.content else "Task completed."
+
+        # Generate and store reflections if LaMer is enabled
+        if self.enable_reflection:
+            success = not (result.startswith("❌") or result.startswith("⚠️") or
+                          "couldn't be completed" in result)
+
+            episode = ExecutionEpisode(
+                task_description=self.current_task_description,
+                messages=self.messages.copy(),
+                success=success,
+                final_outcome=result,
+                execution_time=time.time() - self.task_start_time,
+                tools_used=list(set([
+                    msg.name for msg in self.messages
+                    if msg.role == "tool" and msg.name
+                ]))
+            )
+
+            # Generate and store reflections
+            reflections = await self.reflection_system.add_episode(episode)
+            print(f"\n💡 Generated {len(reflections)} reflections for future learning!")
+
+            # Update meta-learning strategies if enabled
+            if self.enable_meta_learning:
+                # Extract strategy updates from reflections
+                strategy_update = {
+                    'preferred_tools': episode.tools_used,
+                    'reflection_guidance': reflections[:3]  # Top 3 reflections
+                }
+                task_type = self.meta_learning_system._classify_task_type(
+                    self.current_task_description
+                )
+                self.meta_learning_system.update_exploration_strategy(
+                    task_type, strategy_update
+                )
+
+        return result
+
+    async def run_streaming(self) -> str:
+        """Execute agent loop with streaming responses and optional reflection and meta-learning capabilities."""
+        # Start new run, initialize log file
+        self.logger.start_new_run()
+        print(f"{Colors.DIM}📝 Log file: {self.logger.get_log_file_path()}{Colors.RESET}")
+
+        # Get exploration guidance if LaMer is enabled
+        exploration_guidance = ""
+        if self.enable_meta_learning and self.current_task_description:
+            exploration_guidance = self.meta_learning_system.get_exploration_guidance(
+                self.current_task_description
+            )
+
+            # Add exploration guidance to system context if available
+            if exploration_guidance:
+                guidance_message = Message(
+                    role="user",
+                    content=f"[Exploration Guidance]\n{exploration_guidance}"
+                )
+                # Insert after system prompt but before user message
+                if len(self.messages) >= 2:
+                    self.messages.insert(1, guidance_message)
+                else:
+                    self.messages.append(guidance_message)
+
+        # Get relevant reflections if LaMer is enabled
+        relevant_reflections = []
+        if self.enable_reflection and self.current_task_description:
+            relevant_reflections = self.reflection_system.get_relevant_reflections(
+                self.current_task_description
+            )
+
+            # Add reflections to context if available
+            if relevant_reflections:
+                reflections_text = "[Past Reflections]\n" + "\n".join(
+                    f"{i+1}. {ref}" for i, ref in enumerate(relevant_reflections)
+                )
+                reflections_message = Message(
+                    role="user",
+                    content=reflections_text
+                )
+                # Insert after system prompt and any exploration guidance
+                insert_pos = 1
+                if exploration_guidance:
+                    insert_pos = 2
+                self.messages.insert(insert_pos, reflections_message)
+
+        step = 0
+
+        # Get timeout configuration (defaults if config not available)
+        tool_timeout = getattr(self.llm, 'request_timeout', 30.0)
+        enable_progress = True
+        if hasattr(self.llm, 'request_timeout'):
+            # If request_timeout is > 0, use tool timeout and enable progress
+            tool_timeout = max(5.0, self.llm.request_timeout * 0.5)  # Tool timeout defaults to half of LLM timeout
+            enable_progress = tool_timeout > 0
+
+        while step < self.max_steps:
+            # Check and summarize message history to prevent context overflow
+            await self._summarize_messages()
+
+            # Step header with proper width calculation
+            BOX_WIDTH = 58
+            step_text = f"{Colors.BOLD}{Colors.BRIGHT_CYAN}💭 Step {step + 1}/{self.max_steps}{Colors.RESET}"
+            step_display_width = calculate_display_width(step_text)
+            padding = max(0, BOX_WIDTH - 1 - step_display_width)  # -1 for leading space
+
+            print(f"\n{Colors.DIM}╭{'─' * BOX_WIDTH}╮{Colors.RESET}")
+            print(f"{Colors.DIM}│{Colors.RESET} {step_text}{' ' * padding}{Colors.DIM}│{Colors.RESET}")
+            print(f"{Colors.DIM}╰{'─' * BOX_WIDTH}╯{Colors.RESET}")
+
+            # Get tool list for LLM call
+            tool_list = list(self.tools.values())
+
+            # Log LLM request and call LLM with Tool objects directly
+            self.logger.log_request(messages=self.messages, tools=tool_list)
+
+            try:
+                # Use streaming to get real-time response
+                response_parts = {"content": "", "thinking": "", "tool_calls": []}
+
+                # Process streaming responses
+                async for chunk in self.llm.generate_stream(messages=self.messages, tools=tool_list):
+                    if chunk.content:
+                        response_parts["content"] += chunk.content
+                        print(f"{Colors.BRIGHT_BLUE}{chunk.content}{Colors.RESET}", end='')
+
+                    if chunk.thinking:
+                        response_parts["thinking"] += chunk.thinking
+                        print(f"{Colors.DIM}{chunk.thinking}{Colors.RESET}", end='')
+
+                    if chunk.tool_calls:
+                        response_parts["tool_calls"].extend(chunk.tool_calls)
+
+                # Create response from aggregated parts
+                response = LLMResponse(
+                    content=response_parts["content"],
+                    thinking=response_parts["thinking"] if response_parts["thinking"] else None,
+                    tool_calls=response_parts["tool_calls"] if response_parts["tool_calls"] else None,
+                    finish_reason="stop",  # Since we're streaming, this is always "stop"
+                    usage=None,  # For now, streaming responses won't include usage
+                )
+
+                print()  # New line after streaming is done
+
+            except Exception as e:
+                # Check if it's a retry exhausted error
+                from .retry import RetryExhaustedError
+
+                if isinstance(e, RetryExhaustedError):
+                    error_msg = f"LLM call failed after {e.attempts} retries\nLast error: {str(e.last_exception)}"
+                    print(f"\n{Colors.BRIGHT_RED}❌ Retry failed:{Colors.RESET} {error_msg}")
+                else:
+                    error_msg = f"LLM call failed: {str(e)}"
+                    print(f"\n{Colors.BRIGHT_RED}❌ Error:{Colors.RESET} {error_msg}")
+                return error_msg
+
+            # Accumulate API reported token usage (only available for non-streaming for now)
+            if response.usage:
+                self.api_total_tokens = response.usage.total_tokens
+
+            # Log LLM response
+            self.logger.log_response(
+                content=response.content,
+                thinking=response.thinking,
+                tool_calls=response.tool_calls,
+                finish_reason=response.finish_reason,
+            )
+
+            # Add assistant message
+            assistant_msg = Message(
+                role="assistant",
+                content=response.content,
+                thinking=response.thinking,
+                tool_calls=response.tool_calls,
+            )
+            self.messages.append(assistant_msg)
+
+            # The content was already shown during streaming, no need to repeat
+
+            # Check if task is complete (no tool calls)
+            if not response.tool_calls:
+                break
+
+            # Execute tool calls
+            for tool_call in response.tool_calls:
+                tool_call_id = tool_call.id
+                function_name = tool_call.function.name
+                arguments = tool_call.function.arguments
+
+                # Tool call header
+                print(f"\n{Colors.BRIGHT_YELLOW}🔧 Tool Call:{Colors.RESET} {Colors.BOLD}{Colors.CYAN}{function_name}{Colors.RESET}")
+
+                # Arguments (formatted display)
+                print(f"{Colors.DIM}   Arguments:{Colors.RESET}")
+                # Truncate each argument value to avoid overly long output
+                truncated_args = {}
+                for key, value in arguments.items():
+                    value_str = str(value)
+                    if len(value_str) > 200:
+                        truncated_args[key] = value_str[:200] + "..."
+                    else:
+                        truncated_args[key] = value
+                args_json = json.dumps(truncated_args, indent=2, ensure_ascii=False)
+                for line in args_json.split("\n"):
+                    print(f"   {Colors.DIM}{line}{Colors.RESET}")
+
+                # Execute tool with timeout and progress indication
+                if function_name not in self.tools:
+                    result = ToolResult(
+                        success=False,
+                        content="",
+                        error=f"Unknown tool: {function_name}",
+                    )
+                else:
+                    progress = ProgressIndicator(
+                        f"Executing {function_name}", enable_progress
+                    )
+                    try:
+                        tool = self.tools[function_name]
+                        async with asyncio.timeout(tool_timeout):
+                            progress.start()
+                            try:
+                                result = await tool.execute(**arguments)
+                            finally:
+                                progress.stop()
+                    except asyncio.TimeoutError:
+                        error_msg = f"Tool '{function_name}' timed out after {tool_timeout}s. Consider increasing timeout or breaking task into smaller steps."
+                        print(f"\n{Colors.BRIGHT_RED}⚠️  Timeout:{Colors.RESET} {error_msg}")
+                        result = ToolResult(
+                            success=False,
+                            content="",
+                            error=f"Tool execution failed: {error_msg}",
                         )
                     except Exception as e:
                         # Catch all exceptions during tool execution, convert to failed ToolResult

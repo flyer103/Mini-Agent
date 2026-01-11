@@ -5,7 +5,7 @@ This module provides a unified interface for different LLM providers
 """
 
 import logging
-from typing import Any
+from typing import Any, AsyncIterator
 
 from ..retry import RetryConfig
 from ..schema import LLMProvider, LLMResponse, Message
@@ -234,3 +234,23 @@ class LLMClient:
             LLMResponse containing the generated content
         """
         return await self._client.generate(messages, tools)
+
+    async def generate_stream(
+        self,
+        messages: list[Message],
+        tools: list | None = None,
+    ) -> AsyncIterator[LLMResponse]:
+        """Generate streaming response from LLM.
+
+        In single provider mode, uses the configured provider.
+        In proxy mode, routes request according to the proxy configuration.
+
+        Args:
+            messages: List of conversation messages
+            tools: Optional list of Tool objects or dicts
+
+        Yields:
+            LLMResponse chunks as they become available
+        """
+        async for chunk in self._client.generate_stream(messages, tools):
+            yield chunk
