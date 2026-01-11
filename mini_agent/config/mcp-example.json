@@ -32,6 +32,16 @@
         "GITHUB_PERSONAL_ACCESS_TOKEN": ""
       },
       "disabled": false
+    },
+    "mermaid": {
+      "description": "Mermaid Diagram Generator - Create and render Mermaid diagrams (flowcharts, sequence diagrams, etc.)",
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "mini_agent.acp.mermaid_mcp"
+      ],
+      "disabled": false
     }
   }
 }
