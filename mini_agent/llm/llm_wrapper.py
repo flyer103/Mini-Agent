@@ -5,13 +5,20 @@ This module provides a unified interface for different LLM providers
 """
 
 import logging
+from typing import Any
 
 from ..retry import RetryConfig
 from ..schema import LLMProvider, LLMResponse, Message
 from .anthropic_client import AnthropicClient
 from .base import LLMClientBase
 from .doubao_client import DoubaoClient
+from .llm_proxy import LLMProxyClient
 from .openai_client import OpenAIClient
+
+try:
+    from ..schema.llm_proxy import LLMProxyConfig
+except ImportError:
+    LLMProxyConfig = Any
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +51,9 @@ class LLMClient:
         model: str = "MiniMax-M2.1",
         retry_config: RetryConfig | None = None,
         request_timeout: float = 60.0,
+        proxy_config: "LLMProxyConfig | None" = None,  # type: ignore
     ):
-        """Initialize LLM client with specified provider.
+        """Initialize LLM client with specified provider or proxy mode.
 
         Args:
             api_key: API key for authentication
@@ -58,18 +66,53 @@ class LLMClient:
             model: Model name to use
             retry_config: Optional retry configuration
             request_timeout: Timeout for API requests in seconds
+            proxy_config: Optional LLM Proxy configuration for multi-provider mode
         """
         self.provider = provider
         self.api_key = api_key
         self.model = model
         self.retry_config = retry_config or RetryConfig()
         self.request_timeout = request_timeout
+        self.proxy_config = proxy_config
 
-        # Normalize api_base (remove trailing slash) and strip existing suffixes if present
-        api_base = api_base.rstrip("/")
+        # Store raw api_base for normalization
+        self._api_base_raw = api_base
+
+        # Determine connection mode
+        if proxy_config and getattr(proxy_config, "enabled", False):
+            self._mode = "proxy"
+            self._init_proxy_mode()
+        else:
+            self._mode = "single"
+            self._init_single_mode()
+
+    def _init_single_mode(self) -> None:
+        """Initialize single provider mode."""
+        logger.info("Initializing single provider mode: %s", self.provider)
+
+        # Normalize api_base
+        api_base = self._get_normalized_api_base()
+        self.api_base = api_base
+
+        self._client = self._create_single_provider_client(
+            self.provider, self.api_key, api_base, self.model, self.retry_config, self.request_timeout
+        )
+
+    def _init_proxy_mode(self) -> None:
+        """Initialize proxy mode."""
+        logger.info("Initializing LLM Proxy mode with strategy: %s", self.proxy_config.strategy)
+        self._client = LLMProxyClient(
+            config=self.proxy_config,
+            retry_config=self.retry_config,
+            request_timeout=self.request_timeout,
+        )
+
+    def _get_normalized_api_base(self) -> str:
+        """Normalize API base URL and apply provider-specific suffixes."""
+        api_base = self._api_base_raw.rstrip("/")
 
         # Special handling for doubao (no suffix added)
-        if provider == LLMProvider.DOUBAO:
+        if self.provider == LLMProvider.DOUBAO:
             full_api_base = api_base.rstrip('/')
         else:
             # For anthropic/openai, check if this is a MiniMax API endpoint
@@ -79,53 +122,71 @@ class LLMClient:
                 # For MiniMax API, ensure correct suffix based on provider
                 # Strip any existing suffix first
                 base_without_suffix = api_base.replace("/anthropic", "").replace("/v1", "")
-                if provider == LLMProvider.ANTHROPIC:
+                if self.provider == LLMProvider.ANTHROPIC:
                     full_api_base = f"{base_without_suffix}/anthropic"
-                elif provider == LLMProvider.OPENAI:
+                elif self.provider == LLMProvider.OPENAI:
                     full_api_base = f"{base_without_suffix}/v1"
                 else:
-                    raise ValueError(f"Unsupported provider: {provider}")
+                    raise ValueError(f"Unsupported provider: {self.provider}")
             else:
                 # For third-party APIs, append provider-specific suffix
-                if provider == LLMProvider.ANTHROPIC:
+                if self.provider == LLMProvider.ANTHROPIC:
                     full_api_base = f"{api_base}/anthropic"
-                elif provider == LLMProvider.OPENAI:
+                elif self.provider == LLMProvider.OPENAI:
                     full_api_base = f"{api_base}/v1"
                 else:
-                    raise ValueError(f"Unsupported provider: {provider}")
+                    raise ValueError(f"Unsupported provider: {self.provider}")
 
-        self.api_base = full_api_base
+        return full_api_base
 
-        # Instantiate the appropriate client
-        self._client: LLMClientBase
+    def _create_single_provider_client(
+        self,
+        provider: LLMProvider,
+        api_key: str,
+        api_base: str,
+        model: str,
+        retry_config: RetryConfig | None,
+        request_timeout: float,
+    ) -> LLMClientBase:
+        """Create a single provider client instance.
+
+        Args:
+            provider: LLM provider type
+            api_key: API key
+            api_base: API base URL
+            model: Model name
+            retry_config: Retry configuration
+            request_timeout: Request timeout
+
+        Returns:
+            Client instance for the provider
+        """
         if provider == LLMProvider.ANTHROPIC:
-            self._client = AnthropicClient(
+            return AnthropicClient(
                 api_key=api_key,
-                api_base=full_api_base,
+                api_base=api_base,
                 model=model,
                 retry_config=retry_config,
                 request_timeout=request_timeout,
             )
         elif provider == LLMProvider.OPENAI:
-            self._client = OpenAIClient(
+            return OpenAIClient(
                 api_key=api_key,
-                api_base=full_api_base,
+                api_base=api_base,
                 model=model,
                 retry_config=retry_config,
                 request_timeout=request_timeout,
             )
         elif provider == LLMProvider.DOUBAO:
-            self._client = DoubaoClient(
+            return DoubaoClient(
                 api_key=api_key,
-                api_base=full_api_base,
+                api_base=api_base,
                 model=model,
                 retry_config=retry_config,
                 request_timeout=request_timeout,
             )
         else:
             raise ValueError(f"Unsupported provider: {provider}")
-
-        logger.info("Initialized LLM client with provider: %s, api_base: %s", provider, full_api_base)
 
     @property
     def retry_callback(self):
@@ -137,12 +198,33 @@ class LLMClient:
         """Set retry callback."""
         self._client.retry_callback = value
 
+    @property
+    def is_proxy_mode(self) -> bool:
+        """Check if client is in proxy mode.
+
+        Returns:
+            True if in proxy mode, False if in single provider mode
+        """
+        return self._mode == "proxy"
+
+    @property
+    def is_single_mode(self) -> bool:
+        """Check if client is in single provider mode.
+
+        Returns:
+            True if in single provider mode, False if in proxy mode
+        """
+        return self._mode == "single"
+
     async def generate(
         self,
         messages: list[Message],
         tools: list | None = None,
     ) -> LLMResponse:
         """Generate response from LLM.
+
+        In single provider mode, uses the configured provider.
+        In proxy mode, routes request according to the proxy configuration.
 
         Args:
             messages: List of conversation messages

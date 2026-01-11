@@ -10,30 +10,98 @@
 # - Fill in your API key and customize settings as needed
 # - All config files (config.yaml, mcp.json, system_prompt.md) are in the same directory
 
-# ===== LLM Configuration =====
+# ===== LLM Proxy Configuration (Multi-Provider Mode) =====
+# Enable LLM Proxy for automatic failover and load balancing across multiple providers
+# When enabled, mini_agent will automatically switch between providers if one fails
+llm_proxy:
+  # Enable or disable LLM Proxy mode
+  # - true: Use multiple providers with routing and failover
+  # - false: Use single provider mode (traditional, see 'llm' section below)
+  enabled: false
+
+  # Routing strategy for distributing requests across providers:
+  # - failover: Primary-backup mode (try providers in priority order, recommended for production)
+  # - round_robin: Distribute requests evenly across all providers
+  # - priority: Similar to failover with more flexibility
+  # - weighted: Distribute based on weight values
+  strategy: "failover"
+
+  # Number of retries per provider before marking as failed
+  retry_count: 3
+
+  # Health check interval (seconds, 0 to disable background health checks)
+  health_check_interval: 30
+
+  # Providers configuration (at least one provider required)
+  providers:
+    # Example: MiniMax as primary provider
+    - name: "primary"
+      provider: "anthropic"  # Provider type: anthropic / openai / doubao
+      api_key: "YOUR_API_KEY"  # Provider API Key
+      api_base: "https://api.minimax.io"  # API endpoint
+      model: "MiniMax-M2.1"  # Model name
+      weight: 1  # Weight for weighted routing
+      priority: 1  # Priority for failover routing (lower number = higher priority)
+      enabled: true  # Enable/disable this provider
+      max_failures: 3  # Max failures before marking unhealthy
+      failure_window: 60  # Time window (seconds) for counting failures
+      recovery_timeout: 300  # Time before attempting recovery (seconds)
+
+    # Example: Doubao as backup provider
+    # - name: "backup"
+    #   provider: "doubao"
+    #   api_key: "YOUR_DOUBAO_API_KEY"
+    #   api_base: "https://ark.cn-beijing.volces.com/api/v3"
+    #   model: "ep-xxxxxxxx"  # Your Doubao model endpoint ID
+    #   priority: 2
+    #   enabled: true
+
+    # Example: OpenAI as tertiary provider
+    # - name: "openai-backup"
+    #   provider: "openai"
+    #   api_key: "YOUR_OPENAI_API_KEY"
+    #   api_base: "https://api.openai.com"
+    #   model: "gpt-4o"
+    #   priority: 3
+    #   enabled: false  # Disabled by default
+
+# ===== Single Provider Configuration (Traditional Mode) =====
+# This configuration is used when llm_proxy.enabled = false
 # MiniMax API Configuration
 # MiniMax provides both global and China platforms:
 # - Global: https://platform.minimax.io -> api_base: https://api.minimax.io
 # - China: https://platform.minimaxi.com -> api_base: https://api.minimaxi.com
 # Please choose based on your network environment and get API key from corresponding platform
-api_key: "YOUR_API_KEY_HERE"  # Replace with your MiniMax API Key
-api_base: "https://api.minimax.io"   # Global users (default)
-# api_base: "https://api.minimaxi.com"  # China users
-model: "MiniMax-M2.1"
-# LLM provider: "anthropic" or "openai" or "doubao"
-# For MiniMax API, the suffix (/anthropic or /v1) is auto-appended based on provider.
-# For third-party APIs (e.g., https://api.siliconflow.cn/v1), api_base is used as-is.
-provider: "anthropic"  # Default: anthropic
+llm:
+  api_key: "YOUR_API_KEY_HERE"  # Replace with your API Key
+  api_base: "https://api.minimax.io"  # Global users (default)
+  # api_base: "https://api.minimaxi.com"  # China users
+  model: "MiniMax-M2.1"
+  provider: "anthropic"  # anthropic / openai / doubao
 
-# ===== Alternative LLM Providers =====
-# Uncomment and configure ONE of the following providers
+  # Retry configuration
+  retry:
+    enabled: true
+    max_retries: 3
+    initial_delay: 1.0
+    max_delay: 60.0
+    exponential_base: 2.0
+
+  # Timeout configuration
+  timeout:
+    llm_request: 60.0
+    tool_execution: 30.0
+    agent_step: 600.0
+    enable_progress: true
+
+# ===== Alternative LLM Providers (Copy to llm_proxy.providers or llm section) =====
 
 # --- Alibaba Qwen (阿里百炼) ---
 # api_key: "YOUR_QWEN_API_KEY"
 # For anthropic: 'https://dashscope.aliyuncs.com/apps/anthropic'
 # For openai: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 # api_base: "https://dashscope.aliyuncs.com/apps/anthropic"
-# model: "qwen3-max"  # Supported models: qwen-plus, qwen-max, qwen-turbo, etc.
+# model: "qwen3-max"  # qwen-plus, qwen-max, qwen-turbo, etc.
 # provider: "anthropic"  # or "openai"
 
 # --- Doubao (豆包) - Volcano Engine (火山引擎) ---
@@ -42,28 +110,37 @@ provider: "anthropic"  # Default: anthropic
 # - Beijing: https://ark.cn-beijing.volces.com/api/v3
 # - Shanghai: https://ark.cn-shanghai.volces.com/api/v3
 # api_base: "https://ark.cn-beijing.volces.com/api/v3"
-# model: "doubao-pro-32k"  # Supported models: doubao-pro-32k, doubao-pro-128k, doubao-lite-128k, etc.
+# model: "doubao-pro-32k"  # doubao-pro-32k, doubao-pro-128k, doubao-lite-128k, etc.
 # provider: "doubao"
 
-# ===== Retry Configuration =====
-retry:
-  enabled: true           # Enable retry mechanism
-  max_retries: 3          # Maximum number of retries
-  initial_delay: 1.0      # Initial delay time (seconds)
-  max_delay: 60.0         # Maximum delay time (seconds)
-  exponential_base: 2.0   # Exponential backoff base (delay = initial_delay * base^attempt)
+# --- OpenAI ---
+# api_key: "YOUR_OPENAI_API_KEY"
+# api_base: "https://api.openai.com"
+# model: "gpt-4o"  # gpt-4o, gpt-4o-mini, gpt-4-turbo, etc.
+# provider: "openai"
+
+# --- SiliconFlow (硅基流动) ---
+# api_key: "YOUR_SILICONFLOW_API_KEY"
+# api_base: "https://api.siliconflow.cn/v1"
+# model: "deepseek-ai/DeepSeek-V2.5"  # Various models available
+# provider: "openai"
+
+# --- Moonshot AI (月之暗面) ---
+# api_key: "YOUR_MOONSHOT_API_KEY"
+# api_base: "https://api.moonshot.cn/v1"
+# model: "moonshot-v1-8k"  # moonshot-v1-8k, moonshot-v1-32k, moonshot-v1-128k
+# provider: "openai"
+
+# --- Zhipu AI (智谱 AI) ---
+# api_key: "YOUR_ZHIPU_API_KEY"
+# api_base: "https://open.bigmodel.cn/api/paas/v4/"
+# model: "glm-4"  # glm-4, glm-4-air, glm-4-flash, etc.
+# provider: "openai"
 
 # ===== Agent Configuration =====
 max_steps: 100  # Maximum execution steps
 workspace_dir: "./workspace"  # Working directory
 system_prompt_path: "system_prompt.md"  # System prompt file (same config directory)
-
-# ===== Timeout Configuration =====
-timeout:
-  llm_request: 60.0         # LLM API call timeout (seconds)
-  tool_execution: 30.0      # Tool execution timeout (seconds)
-  agent_step: 600.0         # Total agent step timeout (seconds) - 10 minutes
-  enable_progress: true     # Enable progress indication and status updates
 
 # ===== Tools Configuration =====
 tools:
@@ -113,3 +190,57 @@ tools:
     #    - Windows: "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir=$HOME/ChromeProfile/
     # 3. Navigate to sites and log in (cookies/session will be preserved)
     # 4. Run Mini Agent with use_existing_browser: true
+
+# ===== LLM Proxy Routing Strategy Details =====
+#
+# 1. failover (主备故障转移)
+#    - Try providers in priority order (priority 1, then 2, then 3)
+#    - Automatically switches to backup when primary fails
+#    - Ideal for production environments requiring high availability
+#
+# 2. round_robin (轮询)
+#    - Distribute requests evenly across all enabled providers
+#    - Automatically skips unhealthy providers
+#    - Ideal for load balancing scenarios
+#
+# 3. priority (优先级)
+#    - Similar to failover with more flexibility
+#    - Future enhancements may include dynamic priority adjustment
+#
+# 4. weighted (权重)
+#    - Distribute requests based on weight values
+#    - Higher weight = more requests
+#    - Ideal for providers with different capacities or costs
+#
+# ===== Health Check Mechanism =====
+#
+# 1. Failure Detection
+#    - Records success/failure for each request
+#    - Counts failures within failure_window (default: 60s)
+#    - Marks provider unhealthy after max_failures (default: 3)
+#
+# 2. Auto Recovery
+#    - Attempts recovery after recovery_timeout (default: 300s)
+#    - If successful, marks provider healthy again
+#
+# 3. Manual Control
+#    - Set enabled: false to manually disable provider
+#    - Temporarily remove from config without deleting
+#
+# ===== Common Scenarios =====
+#
+# Scenario 1: Production High Availability
+#   - strategy: failover
+#   - Configure 2-3 providers with priorities 1, 2, 3
+#   - Automatic failover on primary provider failure
+#
+# Scenario 2: Development/Testing
+#   - strategy: round_robin
+#   - Configure multiple test environment providers
+#   - Evenly distribute test requests
+#
+# Scenario 3: Cost Optimization
+#   - strategy: weighted
+#   - Cheaper provider: weight=3
+#   - Expensive provider: weight=1
+#   - 75% requests to cheap provider, 25% to expensive provider

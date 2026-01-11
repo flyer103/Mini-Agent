@@ -3,10 +3,15 @@
 Provides unified configuration loading and management functionality
 """
 
+import logging
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field
+
+from .schema.llm_proxy import LLMProxyConfig, ProviderConfig, ProxyStrategy
+
+logger = logging.getLogger(__name__)
 
 
 class TimeoutConfig(BaseModel):
@@ -80,6 +85,7 @@ class Config(BaseModel):
     """Main configuration class"""
 
     llm: LLMConfig
+    llm_proxy: LLMProxyConfig = Field(default_factory=LLMProxyConfig)  # LLM Proxy configuration
     agent: AgentConfig
     tools: ToolsConfig
 
@@ -116,15 +122,34 @@ class Config(BaseModel):
         if not data:
             raise ValueError("Configuration file is empty")
 
-        # Parse LLM configuration
-        if "api_key" not in data:
-            raise ValueError("Configuration file missing required field: api_key")
+        # Support both new format (llm section) and old format (root level)
+        # New format has "llm" section, old format has api_key at root
+        if "llm" in data:
+            # New format: llm section present
+            llm_data = data["llm"]
+            api_key = llm_data.get("api_key")
+            if not api_key or api_key == "YOUR_API_KEY_HERE":
+                raise ValueError("Please configure a valid API Key in the llm section")
 
-        if not data["api_key"] or data["api_key"] == "YOUR_API_KEY_HERE":
-            raise ValueError("Please configure a valid API Key")
+            # Parse retry and timeout from llm section
+            retry_data = llm_data.get("retry", {})
+            timeout_data = llm_data.get("timeout", {})
+            api_base = llm_data.get("api_base", "https://api.minimax.io")
+            model = llm_data.get("model", "MiniMax-M2.1")
+            provider = llm_data.get("provider", "anthropic")
+        else:
+            # Old format: root level fields
+            api_key = data.get("api_key")
+            if not api_key or api_key == "YOUR_API_KEY_HERE":
+                raise ValueError("Please configure a valid API Key")
 
-        # Parse retry configuration
-        retry_data = data.get("retry", {})
+            # Parse retry and timeout from root level
+            retry_data = data.get("retry", {})
+            timeout_data = data.get("timeout", {})
+            api_base = data.get("api_base", "https://api.minimax.io")
+            model = data.get("model", "MiniMax-M2.1")
+            provider = data.get("provider", "anthropic")
+
         retry_config = RetryConfig(
             enabled=retry_data.get("enabled", True),
             max_retries=retry_data.get("max_retries", 3),
@@ -133,8 +158,6 @@ class Config(BaseModel):
             exponential_base=retry_data.get("exponential_base", 2.0),
         )
 
-        # Parse timeout configuration
-        timeout_data = data.get("timeout", {})
         timeout_config = TimeoutConfig(
             llm_request=timeout_data.get("llm_request", 60.0),
             tool_execution=timeout_data.get("tool_execution", 30.0),
@@ -143,10 +166,10 @@ class Config(BaseModel):
         )
 
         llm_config = LLMConfig(
-            api_key=data["api_key"],
-            api_base=data.get("api_base", "https://api.minimax.io"),
-            model=data.get("model", "MiniMax-M2.1"),
-            provider=data.get("provider", "anthropic"),
+            api_key=api_key,
+            api_base=api_base,
+            model=model,
+            provider=provider,
             retry=retry_config,
             timeout=timeout_config,
         )
@@ -181,8 +204,36 @@ class Config(BaseModel):
             enable_browser_use=tools_data.get("enable_browser_use", True),
         )
 
+        # Parse LLM Proxy configuration (optional)
+        llm_proxy_config = LLMProxyConfig()
+        if "llm_proxy" in data:
+            proxy_data = data["llm_proxy"]
+            strategy_str = proxy_data.get("strategy", "failover")
+
+            # Convert string to ProxyStrategy enum
+            try:
+                strategy = ProxyStrategy(strategy_str)
+            except ValueError:
+                # Fallback to failover if invalid strategy
+                logger.warning("Invalid proxy strategy '%s', using 'failover'", strategy_str)
+                strategy = ProxyStrategy.FAILOVER
+
+            llm_proxy_config = LLMProxyConfig(
+                enabled=proxy_data.get("enabled", False),
+                strategy=strategy,
+                retry_count=proxy_data.get("retry_count", 3),
+                health_check_interval=proxy_data.get("health_check_interval", 30),
+                circuit_breaker_threshold=proxy_data.get("circuit_breaker_threshold", 5),
+                circuit_breaker_timeout=proxy_data.get("circuit_breaker_timeout", 60),
+                providers=[
+                    ProviderConfig(**provider)
+                    for provider in proxy_data.get("providers", [])
+                ],
+            )
+
         return cls(
             llm=llm_config,
+            llm_proxy=llm_proxy_config,
             agent=agent_config,
             tools=tools_config,
         )

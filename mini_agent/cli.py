@@ -457,14 +457,31 @@ async def run_agent(workspace_dir: Path, enable_lamer: bool = False):
     else:
         raise ValueError(f"Unknown provider: {config.llm.provider}")
 
-    llm_client = LLMClient(
-        api_key=config.llm.api_key,
-        provider=provider,
-        api_base=config.llm.api_base,
-        model=config.llm.model,
-        retry_config=retry_config if config.llm.retry.enabled else None,
-        request_timeout=config.llm.timeout.llm_request,
-    )
+    # Initialize LLM Client (support both single provider and proxy modes)
+    if config.llm_proxy.enabled:
+        # Proxy mode - multi-provider with routing and failover
+        llm_client = LLMClient(
+            api_key=config.llm.api_key,  # Default API key (not used in proxy mode)
+            provider=provider,  # Default provider (not used in proxy mode)
+            api_base=config.llm.api_base,  # Default API base (not used in proxy mode)
+            model=config.llm.model,  # Default model (not used in proxy mode)
+            retry_config=retry_config if config.llm.retry.enabled else None,
+            request_timeout=config.llm.timeout.llm_request,
+            proxy_config=config.llm_proxy,  # Pass proxy configuration
+        )
+        print(f"{Colors.GREEN}✅ LLM Proxy mode enabled (strategy: {config.llm_proxy.strategy.value}){Colors.RESET}")
+        print(f"{Colors.GREEN}   Providers configured: {len(config.llm_proxy.providers)}{Colors.RESET}")
+    else:
+        # Single provider mode - traditional single LLM provider
+        llm_client = LLMClient(
+            api_key=config.llm.api_key,
+            provider=provider,
+            api_base=config.llm.api_base,
+            model=config.llm.model,
+            retry_config=retry_config if config.llm.retry.enabled else None,
+            request_timeout=config.llm.timeout.llm_request,
+        )
+        print(f"{Colors.GREEN}✅ Single provider mode: {config.llm.provider}{Colors.RESET}")
 
     # Set retry callback
     if config.llm.retry.enabled:

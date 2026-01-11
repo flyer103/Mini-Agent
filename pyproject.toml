@@ -65,6 +65,11 @@ disable = [
     "arguments-differ",  # Allow subclasses to have different parameter signatures
 ]
 
+[tool.uv.workspace]
+members = [
+    "llm-proxy",
+]
+
 [dependency-groups]
 dev = [
     "pytest-asyncio>=1.2.0",
