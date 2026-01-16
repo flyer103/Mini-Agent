@@ -1,6 +1,7 @@
 """Tools module."""
 
 from .base import Tool, ToolResult
+from .ast_grep_tool import AstGrepTool
 from .bash_tool import BashTool, BashKillTool, BashOutputTool
 from .browser_tool import (
     BrowserCloseTool,
@@ -19,6 +20,7 @@ from .note_tool import RecallNoteTool, SessionNoteTool
 __all__ = [
     "Tool",
     "ToolResult",
+    "AstGrepTool",
     "ReadTool",
     "WriteTool",
     "EditTool",

@@ -27,6 +27,7 @@ from mini_agent.agent import Agent
 from mini_agent.config import Config
 from mini_agent.schema import LLMProvider
 from mini_agent.tools.base import Tool
+from mini_agent.tools.ast_grep_tool import AstGrepTool
 from mini_agent.tools.bash_tool import BashKillTool, BashOutputTool, BashTool
 from mini_agent.tools.browser_tool import (
     BrowserCloseTool,
@@ -261,7 +262,16 @@ async def initialize_base_tools(config: Config):
         tools.append(bash_kill_tool)
         print(f"{Colors.GREEN}✅ Loaded Bash Kill tool{Colors.RESET}")
 
-    # 2. Browser tools
+    # 2. Ast-grep tool
+    if config.tools.enable_ast_grep:
+        try:
+            ast_grep_tool = AstGrepTool()
+            tools.append(ast_grep_tool)
+            print(f"{Colors.GREEN}✅ Loaded Ast-grep tool{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.YELLOW}⚠️  Failed to load Ast-grep tool: {e}{Colors.RESET}")
+
+    # 3. Browser tools
     if config.tools.enable_browser_use:
         print(f"{Colors.BRIGHT_CYAN}Loading Browser tools...{Colors.RESET}")
         tools.extend(
@@ -276,7 +286,7 @@ async def initialize_base_tools(config: Config):
         )
         print(f"{Colors.GREEN}✅ Loaded 6 Browser tools (Playwright based){Colors.RESET}")
 
-    # 3. Claude Skills (loaded from package directory)
+    # 4. Claude Skills (loaded from package directory)
     if config.tools.enable_skills:
         print(f"{Colors.BRIGHT_CYAN}Loading Claude Skills...{Colors.RESET}")
         try:
@@ -368,6 +378,15 @@ def add_workspace_tools(tools: List[Tool], config: Config, workspace_dir: Path):
             ]
         )
         print(f"{Colors.GREEN}✅ Loaded file operation tools (workspace: {workspace_dir}){Colors.RESET}")
+
+    # Ast-grep tool - operates on files in workspace
+    if config.tools.enable_ast_grep:
+        try:
+            ast_grep_tool = AstGrepTool(workspace_dir=str(workspace_dir))
+            tools.append(ast_grep_tool)
+            print(f"{Colors.GREEN}✅ Loaded Ast-grep tool (workspace: {workspace_dir}){Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.YELLOW}⚠️  Failed to load Ast-grep tool: {e}{Colors.RESET}")
 
     # Session note tool - needs workspace to store memory file
     if config.tools.enable_note:

@@ -67,6 +67,7 @@ class ToolsConfig(BaseModel):
     enable_file_tools: bool = True
     enable_bash: bool = True
     enable_note: bool = True
+    enable_ast_grep: bool = False  # AST-based code search and manipulation tool
 
     # Skills
     enable_skills: bool = True
@@ -196,6 +197,7 @@ class Config(BaseModel):
             enable_file_tools=tools_data.get("enable_file_tools", True),
             enable_bash=tools_data.get("enable_bash", True),
             enable_note=tools_data.get("enable_note", True),
+            enable_ast_grep=tools_data.get("enable_ast_grep", False),
             enable_skills=tools_data.get("enable_skills", True),
             skills_dir=tools_data.get("skills_dir", "./skills"),
             enable_mcp=tools_data.get("enable_mcp", True),
